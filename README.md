@@ -1,62 +1,62 @@
 # Playlistnotes
 
-Playlistnotes was created to capture notes connected to your favorite songs. Whether it’s a random detail in a track, some interesting trivia, or memories with loved ones, you can capture and save it all with Playlistnotes.
+A place to keep what music means to you — the details, the trivia, the memory attached to a song. Notes belong to you, are private by default, and are shared only when you deliberately share them.
 
-To use Playlistnotes, log in securely to your Spotify account via the button on the homepage. You will then be able to select any of your saved playlists. Once a playlist is selected, you can add, edit, or delete your notes.
+**This branch is v2, a rewrite in progress.** v1 — Express, Create React App, MongoDB, and Spotify OAuth — still runs in production on `main` and is untouched. See [`docs/migration-status.md`](docs/migration-status.md) for where the migration currently stands.
 
-## Screenshots
+## Why v2 exists
 
-![Screenshot of Playlistnotes homepage](https://i.imgur.com/RgGBbDP.png)
+Spotify's Web API caps an app in Development Mode at five authenticated Spotify users, and Extended Quota requires a registered business with at least 250,000 monthly active users. v1 made Spotify identity *be* Playlistnotes identity, so it cannot onboard anyone new.
 
-![Screenshot of list of user's playlists](https://i.imgur.com/SjfSTAk.png)
+v2 inverts that. **Playlistnotes owns its accounts, notes, collections, privacy rules, public URLs, and internal music identifiers.** Spotify becomes one optional source among many: paste a track link and write a note, with no Spotify login anywhere in the flow. The core acceptance suite must pass with no Spotify credentials configured at all.
 
-![Screenshot of notes for Perfect Days soundtrack playlist](https://i.imgur.com/lhgqaX6.png)
+## Stack
 
-A live version of the website is available at https://playlistnotes.io. However, since the app is in ["Development Mode"](https://developer.spotify.com/documentation/web-api/concepts/quota-modes), new users need to be manually onboarded. You can follow the below instructions to create a clone of this app so you can run the site locally.
+- Next.js App Router, React, strict TypeScript, Node 24
+- PostgreSQL 16+ with Prisma
+- Clerk for authentication (email one-time code and Google)
+- Zod at every server boundary
+- Vitest and Playwright
+- GitHub Actions for verification and for building the deployable artifact
 
-## Local Installation
+## Local setup
 
-1. Clone this repo or download and extract the ZIP onto your local machine.
-2. Navigate to the project directory and run the below command to install the server dependencies:
-```sh
+```bash
+nvm use                       # Node 24
 npm install
-```
-3. Navigate to the `/client` directory and run the below command to install the client dependencies:
-```sh
-npm install
-```
-4. [Create an app](https://developer.spotify.com/dashboard/create) in the Spotify for Developers Dashboard. For Redirect URI, enter:
-```sh
-http://localhost:3000/callback
-```
-5. Visit the [Spotify for Developers Dashboard](https://developer.spotify.com/dashboard) and click on your app.
-6. Click "Settings" in the top-right corner.
-7. Note down your Client ID and Client Secret.
-8. Go to the "User Management" section and onboard yourself as a user.
-9. Create a MongoDB database by following [these instructions](https://developer.mozilla.org/en-US/docs/Learn/Server-side/Express_Nodejs/mongoose#setting_up_the_mongodb_database) on MDN (Section: "Setting up the MongoDB database"). Note down the connection string. 
-10. Create two collections within the database: `users` and `notes`.
-11. Create a `config.env` file in the root directory of the project. Populate it with the below contents (replace the portions with square brackets as instructed):
-```
-DEV_MONGODB_URI=[ENTER CONNECTION STRING FROM STEP 9]
-DEV_DB_NAME=[ENTER DATABASE NAME FROM STEP 9]
-PORT=4000
-CLIENT_SECRET=[ENTER CLIENT SECRET FROM STEP 7]
-```
-12. In `/routes/authorize.js`, update the value of the `client_id` constant to your Client ID from Step 7.
-13. Create a `.env` file in the `client` directory of the project. Populate it with the below contents:
-```
-REACT_APP_ENV=development
-REACT_APP_DEV_SERVER_PORT=4000
+
+createdb playlistnotes_dev    # disposable; recreated from migrations + seed
+createdb playlistnotes_test   # disposable; used by the integration suite
+
+cp .env.example .env.local    # then fill in values
+npm run db:migrate            # apply migrations
+npm run db:seed               # synthetic data covering the awkward cases
+
+npm run dev                   # http://localhost:3100
+npm run db:studio             # browse the model
 ```
 
-## Running the Local App
-1. Navigate to the project directory in the command line and run the below command to start the server:
-```sh
-npm run devstart
+The local database is deliberately disposable — recreate it any time with `npm run db:reset:local`, which refuses to run against anything that is not a local `*_dev` or `*_test` database.
+
+## Validation
+
+```bash
+npm run typecheck
+npm run lint
+npm test                 # unit
+npm run test:integration # database-backed: authorization, uniqueness, transactions
+npm run test:e2e         # Playwright
+npm run build
+npx prisma migrate status
 ```
-2. Navigate to the `client` directory and run the below command in a separate command line or terminal window to start the client side of the app:
-```sh
-npm start
-```
-3. Navigate to `http://localhost:3000` in the web browser to access the app.
-4. Enjoy!
+
+## Repository conventions
+
+- [`AGENTS.md`](AGENTS.md) is the authoritative implementation contract.
+- [`CLAUDE.md`](CLAUDE.md) adapts it for Claude Code and never overrides it.
+- [`docs/v2-plan/`](docs/v2-plan/) archives the original product report as non-normative rationale.
+- `main` is **frozen**: it auto-deploys v1 to Heroku. Never push or merge to it without an explicit cutover decision.
+
+## License
+
+GPL-3.0-or-later. See [LICENSE.txt](LICENSE.txt).
