@@ -1,12 +1,10 @@
-import { dirname } from "path";
-import { fileURLToPath } from "url";
-import { FlatCompat } from "@eslint/eslintrc";
+import coreWebVitals from "eslint-config-next/core-web-vitals";
+import typescriptConfig from "eslint-config-next/typescript";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-
-const compat = new FlatCompat({ baseDirectory: __dirname });
-
+/**
+ * eslint-config-next v16 ships native flat configs, so FlatCompat is neither
+ * needed nor compatible here.
+ */
 const eslintConfig = [
   {
     // v1 sources still present on this branch until they are removed.
@@ -17,9 +15,11 @@ const eslintConfig = [
       "server.js",
       ".next/**",
       "node_modules/**",
+      "prisma/migrations/**",
     ],
   },
-  ...compat.extends("next/core-web-vitals", "next/typescript"),
+  ...coreWebVitals,
+  ...typescriptConfig,
 ];
 
 export default eslintConfig;

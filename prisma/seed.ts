@@ -251,11 +251,14 @@ async function main() {
   // --- Case 3 + 5: two users, one shared recording, private notes ----------
   // Ada's note carries playlist context: "this track, in this collection, at
   // this position". It points at the FIRST snapshot's item and stays valid.
+  const firstItem = snapshotOne.items.at(0);
+  if (!firstItem) throw new Error("Seed invariant: snapshot one has no items.");
+
   await prisma.note.create({
     data: {
       ownerId: ada.id,
       recordingId: duet.id,
-      collectionItemId: snapshotOne.items[0].id,
+      collectionItemId: firstItem.id,
       body: "The key change at 2:41 is the whole reason this playlist exists.",
       visibility: Visibility.private,
     },
