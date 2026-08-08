@@ -4,7 +4,7 @@ Durable handoff between sessions. Read this before relying on chat context. Upda
 
 **Last updated:** August 7, 2026
 **Current phase:** Phase 1 — foundation
-**Next milestone:** Checkpoint 1a — hands-on local schema review
+**Next milestone:** **Checkpoint 1a — awaiting the user's hands-on schema review.** Run `npm run dev` (http://localhost:3100) and `npm run db:studio`, then approve or change the model before any Managed PostgreSQL spend or droplet change.
 
 ---
 
@@ -58,12 +58,37 @@ Durable handoff between sessions. Read this before relying on chat context. Upda
 
 ## Completed
 
-- **Phase 0.** `v2` branch created from `main` at `32d028e`. `AGENTS.md` and `CLAUDE.md` reconciled with all decisions above and committed. Report archived to `docs/v2-plan/` as non-normative with a divergence table. This file created.
+- **Phase 0.** `v2` branch created from `main` at `32d028e`. `AGENTS.md` and `CLAUDE.md` reconciled with all decisions above and committed (`5b2de48`). Report archived to `docs/v2-plan/` as non-normative with a divergence table.
+- **Phase 1, through the schema.** Next.js 16 / React 19 / TypeScript 5.9 / Prisma 6.19 scaffold, full v2 schema, initial migration, seed data, guarded local reset, CI workflow (`3f7a7d5`, `1943a0d`).
+
+### Verification actually run — August 7, 2026
+
+| Check | Result |
+| --- | --- |
+| `npm run typecheck` | clean |
+| `npm run lint` | clean |
+| `npm test` | 7/7 passing (`normalizedKey`) |
+| `npx prisma migrate dev` | `20260808021705_init` applied to an empty database |
+| `npx prisma migrate status` | up to date |
+| `npm run db:seed` | 2 users, 3 artists, 1 album, 3 recordings, 3 recording-artist credits, 2 collections, 5 items, 4 notes, 2 imports, 1 tag |
+| `npm run build` | succeeds; standalone artifact, 157 MB |
+| `curl localhost:3100` | 200, renders seeded data, `X-Robots-Tag: noindex, nofollow` present |
+| `npm audit` | 0 vulnerabilities |
+
+Not yet exercised: `test:integration` and `test:e2e` have configs but no test files — they arrive in Phase 2 alongside the behavior they verify.
+
+### Decisions taken during implementation
+
+- **Next 16.3.0, not 15.x.** The 15.x tree carried four high-severity advisories through `postcss` and `sharp`. No migration cost in a greenfield app. Two consequences: `next lint` no longer exists, so `lint` invokes `eslint` directly; and `eslint-config-next` v16 ships native flat configs, so `FlatCompat` is gone (it throws on a circular structure).
+- **Prisma stays on 6.19.** Prisma 7 exists, but its ESM-only client and new generator are a real migration, and 6.19 carries no advisory. Revisit after the sprint. The `package.json#prisma` seed key is deprecated in favor of `prisma.config.ts`; deferred because adopting it changes `.env` auto-loading behavior and the current setup works.
+- **`next dev` writes into `AGENTS.md`.** Next 16 appends a `nextjs-agent-rules` block automatically (`node_modules/next/dist/server/lib/generate-agent-files.js`) and re-adds it if removed. Committed as-is. It also means Next 16 ships its own docs at `node_modules/next/dist/docs/` — read those before writing Next code in Phase 2, since 16 diverges from most training data.
+- **Local Node is x86-64 running under Rosetta 2** on Apple Silicon. Next warns about degraded performance. Not blocking; worth replacing with an arm64 build.
 
 ## Not yet done — blocked on the user
 
 | Blocked item | Needs |
 | --- | --- |
+| **Remove v1 application files** (`client/`, `routes/`, `db/`, `server.js`) | `git rm -r` was denied by the auto-mode classifier. They sit alongside v2 and are excluded from tsconfig/eslint, but the tree is half-migrated until they go. `main` retains everything. |
 | DR MongoDB backup | The user runs `mongodump` themselves; the connection string must never enter an agent transcript |
 | Sanitized migration export | Follows the DR backup |
 | v1 screenshots | A browser session |
