@@ -1,0 +1,598 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Playlistnotes v2 product rescue and technical migration plan for Samah Saeed.">
+  <title>Playlistnotes v2 - Product Rescue &amp; Migration Plan</title>
+  <style>
+    :root {
+      --ink: #172033;
+      --muted: #5d677a;
+      --paper: #f8f7f3;
+      --panel: #ffffff;
+      --line: #dfe3ea;
+      --navy: #101b36;
+      --violet: #6c5ce7;
+      --violet-soft: #eeebff;
+      --mint: #0f8f76;
+      --mint-soft: #e1f5ef;
+      --amber: #b46a00;
+      --amber-soft: #fff0d5;
+      --red: #b53b46;
+      --red-soft: #fde9eb;
+      --shadow: 0 18px 50px rgba(31, 40, 62, 0.11);
+      --radius: 18px;
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 10% 0%, rgba(108, 92, 231, 0.12), transparent 28rem),
+        radial-gradient(circle at 95% 8%, rgba(15, 143, 118, 0.09), transparent 25rem),
+        var(--paper);
+      font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.58;
+    }
+
+    a { color: #4d3dcc; text-decoration-thickness: 1px; text-underline-offset: 3px; overflow-wrap: anywhere; }
+    a:hover { color: #2f238b; }
+    code, .mono { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace; }
+
+    .shell { width: min(1180px, calc(100% - 34px)); margin: 0 auto; }
+
+    .hero {
+      position: relative;
+      overflow: hidden;
+      margin: 28px auto 22px;
+      padding: clamp(36px, 7vw, 76px);
+      color: #fff;
+      background:
+        linear-gradient(130deg, rgba(108, 92, 231, 0.97), rgba(16, 27, 54, 0.97) 62%, rgba(15, 143, 118, 0.95));
+      border-radius: 28px;
+      box-shadow: var(--shadow);
+    }
+
+    .hero::after {
+      content: "";
+      position: absolute;
+      width: 380px;
+      height: 380px;
+      right: -130px;
+      top: -160px;
+      border: 1px solid rgba(255,255,255,.24);
+      border-radius: 50%;
+      box-shadow: 0 0 0 55px rgba(255,255,255,.045), 0 0 0 110px rgba(255,255,255,.025);
+    }
+
+    .eyebrow {
+      margin: 0 0 12px;
+      font-size: .78rem;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: .14em;
+      color: rgba(255,255,255,.76);
+    }
+
+    h1, h2, h3 { line-height: 1.14; letter-spacing: -.025em; }
+    h1 { max-width: 850px; margin: 0; font-size: clamp(2.45rem, 6.4vw, 5.25rem); }
+    .hero .dek { max-width: 780px; margin: 22px 0 0; font-size: clamp(1.05rem, 2vw, 1.32rem); color: rgba(255,255,255,.86); }
+
+    .hero-meta { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 28px; }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border: 1px solid rgba(255,255,255,.25);
+      border-radius: 999px;
+      color: rgba(255,255,255,.91);
+      background: rgba(255,255,255,.08);
+      font-size: .86rem;
+      backdrop-filter: blur(5px);
+    }
+
+    .topnav {
+      position: sticky;
+      top: 10px;
+      z-index: 5;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 7px;
+      margin: 0 auto 26px;
+      padding: 10px;
+      border: 1px solid rgba(223, 227, 234, .9);
+      border-radius: 15px;
+      background: rgba(255,255,255,.9);
+      box-shadow: 0 10px 32px rgba(31, 40, 62, .08);
+      backdrop-filter: blur(12px);
+    }
+
+    .topnav a {
+      padding: 7px 10px;
+      color: var(--muted);
+      border-radius: 9px;
+      font-size: .82rem;
+      font-weight: 700;
+      text-decoration: none;
+    }
+    .topnav a:hover { color: var(--ink); background: #f2f1fb; }
+
+    main { padding-bottom: 70px; }
+    section { scroll-margin-top: 82px; margin: 0 0 22px; }
+    .section-card {
+      padding: clamp(25px, 4vw, 46px);
+      background: rgba(255,255,255,.94);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: 0 10px 35px rgba(31, 40, 62, .055);
+    }
+
+    .section-head { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 16px; margin-bottom: 24px; }
+    .section-number { color: var(--violet); font-weight: 850; letter-spacing: .08em; font-size: .8rem; }
+    h2 { margin: 5px 0 0; font-size: clamp(1.65rem, 3vw, 2.45rem); }
+    h3 { margin: 0 0 9px; font-size: 1.1rem; }
+    p { margin: 0 0 14px; }
+    p:last-child { margin-bottom: 0; }
+    .muted { color: var(--muted); }
+    .small { font-size: .88rem; }
+
+    .decision-grid, .card-grid, .resume-grid, .stack-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .decision, .mini-card {
+      min-height: 100%;
+      padding: 19px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: #fff;
+    }
+    .decision strong { display: block; margin-bottom: 6px; font-size: 1.05rem; }
+    .decision .verdict { display: inline-block; margin-bottom: 12px; padding: 4px 8px; border-radius: 999px; font-size: .72rem; font-weight: 850; letter-spacing: .06em; text-transform: uppercase; }
+    .yes { color: #08715e; background: var(--mint-soft); }
+    .no { color: #9e2f3a; background: var(--red-soft); }
+    .later { color: #915600; background: var(--amber-soft); }
+
+    .callout {
+      margin-top: 20px;
+      padding: 18px 20px;
+      border-left: 5px solid var(--violet);
+      border-radius: 0 12px 12px 0;
+      background: var(--violet-soft);
+    }
+    .callout strong { color: #332690; }
+    .warning { border-left-color: var(--red); background: var(--red-soft); }
+    .warning strong { color: #8f2631; }
+    .success { border-left-color: var(--mint); background: var(--mint-soft); }
+    .success strong { color: #08715e; }
+
+    table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: .93rem; }
+    th, td { padding: 13px 12px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--line); }
+    th { color: var(--navy); background: #f1f2f7; font-size: .78rem; text-transform: uppercase; letter-spacing: .06em; }
+    tr:last-child td { border-bottom: 0; }
+    td:first-child { font-weight: 750; }
+
+    .arch {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(130px, 1fr));
+      gap: 12px;
+      align-items: stretch;
+      margin-top: 24px;
+    }
+    .arch-node {
+      position: relative;
+      padding: 16px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: linear-gradient(180deg, #fff, #f8f8fb);
+    }
+    .arch-node:not(:last-child)::after {
+      content: "→";
+      position: absolute;
+      right: -18px;
+      top: 50%;
+      transform: translateY(-50%);
+      z-index: 2;
+      color: var(--violet);
+      font-weight: 900;
+      font-size: 1.25rem;
+    }
+    .arch-node span { display: block; margin-bottom: 5px; color: var(--violet); font-size: .74rem; font-weight: 850; text-transform: uppercase; letter-spacing: .05em; }
+
+    .schema {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 11px;
+      margin-top: 19px;
+    }
+    .schema div { padding: 13px 14px; border-radius: 12px; background: #151f38; color: #fff; font-family: "SFMono-Regular", Consolas, monospace; font-size: .84rem; }
+    .schema div:nth-child(3n + 2) { background: #493ea7; }
+    .schema div:nth-child(3n + 3) { background: #0c765f; }
+
+    .timeline { position: relative; margin-top: 20px; }
+    .timeline::before { content: ""; position: absolute; left: 25px; top: 20px; bottom: 20px; width: 2px; background: linear-gradient(var(--violet), var(--mint)); }
+    .day {
+      position: relative;
+      display: grid;
+      grid-template-columns: 50px 130px minmax(0, 1fr);
+      gap: 16px;
+      align-items: start;
+      padding: 16px 0;
+    }
+    .day-dot { width: 16px; height: 16px; margin: 5px 0 0 18px; border: 4px solid #fff; border-radius: 50%; background: var(--violet); box-shadow: 0 0 0 2px var(--violet); z-index: 1; }
+    .day:nth-child(n+5) .day-dot { background: var(--mint); box-shadow: 0 0 0 2px var(--mint); }
+    .day-label { font-weight: 850; color: var(--navy); }
+    .day-copy { padding: 0 0 14px; border-bottom: 1px solid var(--line); }
+    .day-copy ul { margin: 8px 0 0; }
+    .day-copy .exit { margin-top: 10px; color: #3f4a5f; font-size: .88rem; }
+
+    ul, ol { padding-left: 1.25rem; }
+    li { margin: 6px 0; }
+    .clean-list { list-style: none; padding: 0; margin: 0; }
+    .clean-list li { position: relative; padding-left: 25px; }
+    .clean-list li::before { content: "✓"; position: absolute; left: 0; color: var(--mint); font-weight: 900; }
+
+    .timebox {
+      display: grid;
+      grid-template-columns: 1.15fr .85fr;
+      gap: 18px;
+      align-items: stretch;
+    }
+    .meter { display: flex; height: 18px; overflow: hidden; margin: 17px 0 9px; border-radius: 999px; background: #e7e9ee; }
+    .meter .jobs { width: 72%; background: linear-gradient(90deg, #111c39, #4d5d87); }
+    .meter .pn { width: 28%; background: linear-gradient(90deg, var(--violet), #9085ff); }
+    .legend { display: flex; flex-wrap: wrap; gap: 14px; color: var(--muted); font-size: .82rem; }
+    .legend i { display: inline-block; width: 9px; height: 9px; margin-right: 6px; border-radius: 50%; }
+
+    .resume-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .resume-grid .mini-card { border-top: 4px solid var(--violet); }
+    .resume-grid .mini-card:nth-child(2) { border-top-color: var(--mint); }
+    .resume-grid .mini-card:nth-child(3) { border-top-color: var(--amber); }
+    .resume-grid .mini-card:nth-child(4) { border-top-color: var(--navy); }
+
+    .quote {
+      margin: 20px 0 0;
+      padding: 23px;
+      border-radius: 14px;
+      color: #fff;
+      background: linear-gradient(125deg, #141f3b, #39305f);
+      font-size: 1.06rem;
+    }
+    .quote cite { display: block; margin-top: 9px; color: rgba(255,255,255,.68); font-size: .8rem; font-style: normal; }
+
+    .checklist { columns: 2; column-gap: 30px; }
+    .check { break-inside: avoid; display: grid; grid-template-columns: 19px 1fr; gap: 9px; margin: 0 0 11px; }
+    .box { width: 17px; height: 17px; margin-top: 3px; border: 2px solid #aeb5c4; border-radius: 4px; background: #fff; }
+
+    .files {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0,1fr));
+      gap: 14px;
+    }
+    .file-card { display: block; padding: 20px; border: 1px solid var(--line); border-radius: 14px; color: var(--ink); background: #fff; text-decoration: none; }
+    .file-card:hover { border-color: #a9a0f2; box-shadow: 0 9px 30px rgba(46, 35, 139, .1); }
+    .file-card code { display: block; margin-bottom: 7px; color: var(--violet); font-size: 1rem; font-weight: 800; }
+
+    footer { padding: 28px 0 50px; color: var(--muted); text-align: center; font-size: .82rem; }
+
+    @media (max-width: 900px) {
+      .decision-grid, .card-grid, .stack-grid { grid-template-columns: 1fr 1fr; }
+      .arch { grid-template-columns: 1fr; }
+      .arch-node:not(:last-child)::after { content: "↓"; right: 50%; top: auto; bottom: -22px; transform: translateX(50%); }
+      .schema { grid-template-columns: repeat(2, minmax(0,1fr)); }
+      .timebox { grid-template-columns: 1fr; }
+    }
+
+    @media (max-width: 620px) {
+      .shell { width: min(100% - 20px, 1180px); }
+      .hero { margin-top: 10px; border-radius: 20px; }
+      .topnav { position: static; }
+      .decision-grid, .card-grid, .resume-grid, .stack-grid, .schema, .files { grid-template-columns: 1fr; }
+      .section-head { grid-template-columns: 1fr; }
+      .day { grid-template-columns: 45px 1fr; }
+      .day-copy { grid-column: 2; }
+      .checklist { columns: 1; }
+      .section-card { min-width: 0; overflow: hidden; }
+      table { display: block; width: 100%; max-width: 100%; overflow-x: auto; }
+      th, td { min-width: 138px; padding: 10px 8px; font-size: .82rem; overflow-wrap: anywhere; }
+      code { overflow-wrap: anywhere; word-break: break-word; }
+    }
+
+    @media print {
+      @page { margin: 14mm; }
+      body { background: #fff; font-size: 10.5pt; }
+      .shell { width: 100%; }
+      .hero { margin: 0 0 12px; padding: 28px; border-radius: 0; box-shadow: none; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+      .topnav { display: none; }
+      .section-card { box-shadow: none; break-inside: avoid; }
+      .day, .mini-card, .decision, table, .callout { break-inside: avoid; }
+      a { color: inherit; text-decoration: none; }
+    }
+  </style>
+</head>
+<body>
+  <header class="hero shell">
+    <p class="eyebrow">Product rescue plan · revised August 6, 2026</p>
+    <h1>Playlistnotes v2</h1>
+    <p class="dek">A focused migration from a Spotify-dependent prototype into a secure, provider-independent music journal—designed to reach real users and strengthen Samah Saeed's product-engineering story.</p>
+    <div class="hero-meta">
+      <span class="pill">10 working days</span>
+      <span class="pill">20–30 focused hours</span>
+      <span class="pill">PostgreSQL</span>
+      <span class="pill">Next.js + TypeScript</span>
+      <span class="pill">Accounts without Spotify</span>
+    </div>
+  </header>
+
+  <nav class="topnav shell" aria-label="Report sections">
+    <a href="#decision">Decision</a>
+    <a href="#why">Why v2</a>
+    <a href="#architecture">Architecture</a>
+    <a href="#security">Safety</a>
+    <a href="#sprint">10-day sprint</a>
+    <a href="#time">Time budget</a>
+    <a href="#career">Resume &amp; jobs</a>
+    <a href="#done">Definition of done</a>
+    <a href="#files">Agent files</a>
+  </nav>
+
+  <main class="shell">
+    <section id="decision" class="section-card">
+      <div class="section-head">
+        <div><span class="section-number">01 · EXECUTIVE DECISION</span><h2>Rescue the product, not the old implementation</h2></div>
+      </div>
+      <p class="muted">Playlistnotes is viable again if the product owns its accounts, notes, collections, privacy and internal music identifiers. Spotify becomes one source and destination—not the backend or gatekeeper.</p>
+
+      <div class="decision-grid">
+        <article class="decision"><span class="verdict yes">Choose</span><strong>PostgreSQL</strong><p>Its constraints, joins, transactions, indexing and search fit users, recordings, providers, notes, tags and ordered collections.</p></article>
+        <article class="decision"><span class="verdict no">Skip</span><strong>MongoDB Atlas</strong><p>Atlas is useful managed infrastructure, but document storage is not the best primary model for v2's relational domain.</p></article>
+        <article class="decision"><span class="verdict yes">Choose</span><strong>Playlistnotes accounts</strong><p>Use managed email one-time codes and Google sign-in. Do not make Spotify authorization a prerequisite.</p></article>
+        <article class="decision"><span class="verdict yes">Choose</span><strong>Existing DigitalOcean app host</strong><p>Reuse the current droplet for the application while traffic is small, with a separate process and environment.</p></article>
+        <article class="decision"><span class="verdict later">Prefer if affordable</span><strong>Managed PostgreSQL</strong><p>Move state off the app host for backups, recovery and easier future scaling. Local PostgreSQL remains a valid validation-stage fallback.</p></article>
+        <article class="decision"><span class="verdict later">After core</span><strong>Last.fm recent listens</strong><p>Make “write about what I just heard” the first post-core experiment; do not use Last.fm as canonical identity.</p></article>
+      </div>
+
+      <div class="callout success"><strong>North-star statement:</strong> Playlistnotes is a music journal that accepts links and imports from anywhere. Streaming-service integrations are optional.</div>
+    </section>
+
+    <section id="why" class="section-card">
+      <div class="section-head">
+        <div><span class="section-number">02 · WHY THE PIVOT</span><h2>Spotify authentication cannot be the front door</h2></div>
+      </div>
+      <p>As of August 6, 2026, a Spotify Web API application in Development Mode can authorize at most <strong>five allowlisted Spotify users</strong>, and the app owner must have Spotify Premium. That limit applies to people connecting Spotify—not to people creating independent Playlistnotes accounts or opening public Spotify links and Embeds.</p>
+
+      <div class="callout warning"><strong>The easily confused numbers:</strong> Spotify raised the maximum to 25 Client IDs per developer account in July 2026. That means 25 app identifiers, not 25 users per app, and every Development Mode app on the account shares one API quota. Splitting users across Client IDs is neither the architecture nor a legitimate business-scaling plan.</div>
+
+      <table aria-label="Spotify access constraints and Playlistnotes consequences">
+        <thead><tr><th>Spotify fact</th><th>Current rule</th><th>Consequence for Playlistnotes</th></tr></thead>
+        <tbody>
+          <tr><td>Development Mode</td><td>Up to five manually allowlisted authenticated Spotify users per app; owner Premium required</td><td>“Connect Spotify” cannot be required for a public product.</td></tr>
+          <tr><td>Grandfathered users</td><td>The migration guide says an app already above five may retain its existing cohort but cannot use that status for open-ended onboarding</td><td>Check the dashboard and keep any old cohort for testing only.</td></tr>
+          <tr><td>25 Client IDs</td><td>App-ID creation limit; Development Mode quota is shared across the developer account</td><td>Not 25 users, not 125 users, and not a sharding workaround.</td></tr>
+          <tr><td>Extended Quota Mode</td><td>Unlimited authorized users, but new applicants must currently be organizations with a launched service, at least 250,000 MAU, key-market availability, commercial viability, and policy compliance</td><td>A possible long-term partnership path—not a prerequisite that a new solo product can satisfy.</td></tr>
+          <tr><td>Playlist Web API data</td><td>In current Development Mode, playlist items are returned only for playlists the authenticated user owns or collaborates on</td><td>An arbitrary public playlist link is not a reliable track-list import.</td></tr>
+        </tbody>
+      </table>
+
+      <p class="small muted" style="margin-top:13px">Policy baseline checked August 6, 2026. Spotify also explicitly describes Development Mode as personal, non-commercial experimentation that should not underpin a scalable business. Recheck the live rules before launch.</p>
+
+      <h3 style="margin-top:28px">A playlist link works—but at the playlist level</h3>
+      <p>Spotify officially supports playlist Embeds, and its public oEmbed endpoint currently returns a title, thumbnail and iframe for a public playlist without a Client ID, secret or user OAuth. Spotify's current oEmbed request reference does not list playlists even though the live endpoint accepts them, so Playlistnotes treats that preview as best-effort and always keeps an “Open in Spotify” fallback. That is enough to preserve the link and let someone write about the playlist as a whole.</p>
+      <p>It is <strong>not</strong> enough to enumerate the playlist's tracks. The Embed is an opaque presentation surface, not a data feed. Track-by-track collection import comes from a user-supplied Exportify-compatible or neutral CSV.</p>
+
+      <table aria-label="Playlistnotes v2 source capability matrix">
+        <thead><tr><th>User supplies</th><th>Playlistnotes v2 can do</th><th>It must not claim</th></tr></thead>
+        <tbody>
+          <tr><td>Spotify track URL</td><td>Create/resolve a Playlistnotes recording, fetch best-effort display metadata, and save a note without Spotify OAuth</td><td>Library access or permanent metadata availability</td></tr>
+          <tr><td>Public Spotify playlist URL</td><td>Create a collection reference, description and optional compliant Embed/open link</td><td>That any tracks were imported; the link creates zero items</td></tr>
+          <tr><td>Exportify-compatible CSV</td><td>Create an ordered Playlistnotes-owned collection snapshot and preserve duplicate tracks</td><td>Live synchronization with Spotify</td></tr>
+          <tr><td>Neutral CSV</td><td>Import artist/title/album/source identifiers from a documented format</td><td>That Exportify is required or permanent</td></tr>
+          <tr><td>Last.fm account</td><td>Later: offer a recent-listen inbox through a feature-flagged adapter</td><td>That Last.fm is the canonical music catalog or Playlistnotes login</td></tr>
+        </tbody>
+      </table>
+
+      <div class="callout"><strong>Why sites such as Exportify may still work:</strong> an existing service may have Extended Quota access or grandfathered users, but its exact Spotify status cannot be inferred from the outside. Its continued operation does not mean the same access is available to a new individual app. Playlistnotes may accept compatible CSV files, but must not call, scrape or depend on Exportify itself.</div>
+
+      <h3 style="margin-top:28px">What changes—and what stays emotionally true</h3>
+      <div class="card-grid">
+        <article class="mini-card"><h3>Old dependency</h3><p>Sign into Spotify, browse a Spotify library, fetch playlist tracks, and identify every user and note through Spotify.</p></article>
+        <article class="mini-card"><h3>New foundation</h3><p>Sign into Playlistnotes, capture a recording from a link, CSV or listening history, and store the meaning in Playlistnotes.</p></article>
+        <article class="mini-card"><h3>What never changed</h3><p>The product exists to preserve memories, details, observations and personal context attached to music.</p></article>
+      </div>
+      <div class="callout success"><strong>This does not abandon Playlistnotes.</strong> It removes Spotify as the gatekeeper while preserving Spotify links and playback as optional conveniences. If Extended Quota becomes realistic later, a richer Spotify adapter can be added without replacing Playlistnotes identity or data.</div>
+      <div class="callout"><strong>Validation question:</strong> After writing one note, do invited users independently return on a later day to write another? That behavior matters more than total imported tracks or launch-day signups.</div>
+    </section>
+
+    <section id="architecture" class="section-card">
+      <div class="section-head">
+        <div><span class="section-number">03 · TARGET ARCHITECTURE</span><h2>A modern modular monolith</h2></div>
+      </div>
+      <p>Build one coherent application with strong internal boundaries. This is easier to ship and operate than microservices, while still supporting a future React Native client through a documented <code>/api/v1</code> surface.</p>
+
+      <div class="arch" aria-label="Architecture flow">
+        <div class="arch-node"><span>Identity</span><strong>Clerk account</strong><br><small>Email OTP + Google</small></div>
+        <div class="arch-node"><span>Capture</span><strong>Link / CSV</strong><br><small>Last.fm after core</small></div>
+        <div class="arch-node"><span>Normalize</span><strong>Provider adapters</strong><br><small>Resolve conservatively</small></div>
+        <div class="arch-node"><span>Own</span><strong>PostgreSQL</strong><br><small>UUIDs + mappings</small></div>
+        <div class="arch-node"><span>Experience</span><strong>Notes &amp; collections</strong><br><small>Private / unlisted / public</small></div>
+      </div>
+
+      <h3 style="margin-top:30px">Recommended stack</h3>
+      <div class="stack-grid">
+        <article class="mini-card"><strong>Application</strong><p class="small muted">Next.js App Router, React, strict TypeScript, active Node LTS.</p></article>
+        <article class="mini-card"><strong>Data</strong><p class="small muted">PostgreSQL 16+, Prisma migrations, selective raw SQL, JSONB for provider payloads.</p></article>
+        <article class="mini-card"><strong>Quality</strong><p class="small muted">Zod, Vitest, Testing Library, Playwright and cross-user authorization tests.</p></article>
+        <article class="mini-card"><strong>Operations</strong><p class="small muted">GitHub Actions, nginx, PM2/service unit, Sentry, PostHog and verified backups.</p></article>
+        <article class="mini-card"><strong>Hosting</strong><p class="small muted">Existing DigitalOcean droplet for the app; managed PostgreSQL when budget permits.</p></article>
+        <article class="mini-card"><strong>Design principle</strong><p class="small muted">Stable Playlistnotes URLs and IDs; external providers remain replaceable mappings.</p></article>
+      </div>
+
+      <h3 style="margin-top:30px">Core schema</h3>
+      <div class="schema">
+        <div>users</div><div>artists</div><div>recordings</div><div>recording_artists</div>
+        <div>recording_external_ids</div><div>notes</div><div>collections</div><div>collection_items</div>
+        <div>imports</div><div>tags</div><div>note_tags</div><div>note context</div>
+      </div>
+
+      <table aria-label="Database comparison">
+        <thead><tr><th>Criterion</th><th>PostgreSQL</th><th>MongoDB / Atlas</th><th>Playlistnotes verdict</th></tr></thead>
+        <tbody>
+          <tr><td>Ownership &amp; privacy</td><td>Foreign keys, transactions and precise owner-scoped queries</td><td>Possible, but more application-enforced relationships</td><td>PostgreSQL</td></tr>
+          <tr><td>External identifier mapping</td><td>Strong unique constraints across provider and ID</td><td>Possible with indexes, but joins and merges are less natural</td><td>PostgreSQL</td></tr>
+          <tr><td>Collections and ordering</td><td>Natural join table with position and transactional imports</td><td>Embedded arrays can grow and complicate shared references</td><td>PostgreSQL</td></tr>
+          <tr><td>Flexible provider payloads</td><td>Indexed JSONB alongside relational truth</td><td>Native document strength</td><td>Effectively a tie</td></tr>
+          <tr><td>Search and fuzzy matching</td><td>Full-text search and trigram extensions available</td><td>Atlas Search is strong but adds platform coupling/cost</td><td>PostgreSQL initially</td></tr>
+          <tr><td>Resume signal</td><td>Common in current NYC full-stack/product roles</td><td>Still valuable, but already represented on the current resume</td><td>Build the stronger system story</td></tr>
+        </tbody>
+      </table>
+
+      <p class="small muted" style="margin-top:13px">PostgreSQL's official documentation supports indexed JSONB, so flexible provider metadata does not require a second primary database. <a href="https://www.postgresql.org/docs/current/datatype-json.html">PostgreSQL JSON types</a></p>
+    </section>
+
+    <section id="security" class="section-card">
+      <div class="section-head">
+        <div><span class="section-number">04 · DAY-ZERO SAFETY</span><h2>Do not reopen the old API as-is</h2></div>
+      </div>
+      <p>The current repository's note endpoints accept browser-supplied user identifiers and do not enforce an authenticated owner. Its Spotify authorization code stores and logs access/refresh tokens and reuses a mutable API client across requests. These are product-blocking authorization and isolation problems, not cosmetic technical debt.</p>
+      <div class="callout warning"><strong>Immediate action:</strong> keep v1 in maintenance or read-only mode, export the tiny MongoDB database, remove legacy Spotify tokens after approval, remove credential logging, and rotate the Spotify client secret before public invitation.</div>
+      <div class="card-grid" style="margin-top:16px">
+        <article class="mini-card"><h3>Server-derived identity</h3><p>Every private query derives the acting user from the verified session. The browser never chooses the owner.</p></article>
+        <article class="mini-card"><h3>Private by default</h3><p>New notes and collections are private. Publishing requires an explicit action and a clear preview.</p></article>
+        <article class="mini-card"><h3>Negative tests</h3><p>Every owned resource must prove that User A cannot read, edit or delete User B's data.</p></article>
+      </div>
+      <div class="callout"><strong>Preserve playlist context safely:</strong> a note always belongs to a Playlistnotes recording and may optionally reference a Playlistnotes collection item. This keeps v1's “this song in this playlist” meaning without trusting Spotify IDs as ownership. Publishing a collection never publishes private note bodies automatically.</div>
+      <p class="small muted" style="margin-top:15px">Repository evidence: <a href="https://github.com/sama7/playlistnotes/blob/main/routes/note.js">v1 note routes</a> · <a href="https://github.com/sama7/playlistnotes/blob/main/routes/authorize.js">v1 Spotify authorization</a> · <a href="https://github.com/sama7/playlistnotes/blob/main/client/package.json">v1 frontend package</a></p>
+    </section>
+
+    <section id="sprint" class="section-card">
+      <div class="section-head">
+        <div><span class="section-number">05 · EXECUTION</span><h2>The 10-working-day rescue sprint</h2></div>
+        <span class="muted small">Cut scope before extending the timebox.</span>
+      </div>
+      <div class="timeline">
+        <article class="day"><div class="day-dot"></div><div class="day-label">Day 0</div><div class="day-copy"><h3>Safety and baseline</h3><ul><li>Put v1 in maintenance/read-only mode.</li><li>Export MongoDB with source counts and a checksum; document v1 behavior.</li><li>Plan credential cleanup and confirm where v2 code will live.</li><li>Keep legacy-note import post-core unless explicitly promoted.</li></ul><p class="exit"><strong>Exit:</strong> legacy data is safe and the implementation location is explicit.</p></div></article>
+        <article class="day"><div class="day-dot"></div><div class="day-label">Days 1–2</div><div class="day-copy"><h3>Foundation</h3><ul><li>Scaffold Next.js + strict TypeScript.</li><li>Configure PostgreSQL, Prisma, Clerk, Zod, tests and CI.</li><li>Create the first schema and prove migration from an empty database.</li></ul><p class="exit"><strong>Exit:</strong> email/Google auth creates an isolated local user and CI passes.</p></div></article>
+        <article class="day"><div class="day-dot"></div><div class="day-label">Days 3–5</div><div class="day-copy"><h3>Secure track-note vertical slice</h3><ul><li>Paste a Spotify track link without OAuth.</li><li>Create/resolve an internal recording and external mapping.</li><li>Create, list, edit and delete a private note.</li><li>Fall back to user-supplied metadata when oEmbed fails.</li><li>Prove cross-user access fails and the flow works with no Spotify credentials.</li></ul><p class="exit"><strong>Exit:</strong> two test users are isolated and the core note flow works end to end without Spotify Web API access.</p></div></article>
+        <article class="day"><div class="day-dot"></div><div class="day-label">Days 6–7</div><div class="day-copy"><h3>Collections, links and CSV</h3><ul><li>Capture a public Spotify playlist link as a reference/optional Embed with zero inferred items.</li><li>Parse Exportify-compatible and documented neutral CSV variants.</li><li>Preserve order and duplicate tracks.</li><li>Show matched, created, skipped and failed rows.</li><li>Protect against accidental repeated imports.</li></ul><p class="exit"><strong>Exit:</strong> a realistic CSV becomes a correctly ordered private collection snapshot, while a link alone is never mislabeled as an import.</p></div></article>
+        <article class="day"><div class="day-dot"></div><div class="day-label">Days 8–9</div><div class="day-copy"><h3>Sharing, search and product polish</h3><ul><li>Add private/unlisted/public visibility.</li><li>Create stable note and collection URLs.</li><li>Add user-scoped note search.</li><li>Polish responsive, accessible states and the landing page.</li></ul><p class="exit"><strong>Exit:</strong> one item can be shared without leaking any private content.</p></div></article>
+        <article class="day"><div class="day-dot"></div><div class="day-label">Day 10</div><div class="day-copy"><h3>Production and invitation</h3><ul><li>Deploy behind nginx with a separate process, environment and database role.</li><li>Verify TLS, rate limits, monitoring, backup and restore documentation.</li><li>Instrument a small privacy-safe event set.</li><li>Invite approximately ten people.</li></ul><p class="exit"><strong>Exit:</strong> the production workflow works without Spotify onboarding and later-day return can be observed.</p></div></article>
+      </div>
+      <div class="callout"><strong>First post-core experiment:</strong> feature-flag a Last.fm “recently listened” inbox, then let the user choose a scrobble and write a note. Do not mirror an entire Last.fm library or use its IDs/artwork as the foundation.</div>
+    </section>
+
+    <section id="time" class="section-card">
+      <div class="section-head"><div><span class="section-number">06 · TIME BUDGET</span><h2>Protect the job search</h2></div></div>
+      <div class="timebox">
+        <div>
+          <h3>Recommended commitment: 20–30 focused hours</h3>
+          <p>Spend roughly 2–3 hours per working day for ten days, including agent review, testing and deployment. Keep job applications, interview preparation and networking as the dominant workstream.</p>
+          <div class="meter" aria-label="Suggested weekly effort split"><span class="jobs"></span><span class="pn"></span></div>
+          <div class="legend"><span><i style="background:#253355"></i>~70% job search</span><span><i style="background:#7467ea"></i>~30% Playlistnotes</span></div>
+        </div>
+        <div class="mini-card">
+          <h3>Use coding agents without outsourcing understanding</h3>
+          <ul class="clean-list small">
+            <li>Personally own product scope and schema decisions.</li>
+            <li>Review every auth and privacy diff.</li>
+            <li>Run the app and acceptance tests yourself.</li>
+            <li>Be able to explain tradeoffs in an interview.</li>
+            <li>Stop after Day 10 and evaluate usage.</li>
+          </ul>
+        </div>
+      </div>
+      <div class="callout warning"><strong>Stop rule:</strong> if the secure note + CSV + share workflow is not live by the end of the timebox, cut Last.fm, tags, visual polish or search. Do not turn the rescue into a three-month infrastructure project before users validate it.</div>
+    </section>
+
+    <section id="career" class="section-card">
+      <div class="section-head"><div><span class="section-number">07 · CAREER VALUE</span><h2>How v2 strengthens the resume story</h2></div></div>
+      <p>The attached June 2026 resume already shows eight years of enterprise engineering, high-traffic healthcare work, production debugging, C#/.NET, SQL Server and CI/CD. MKDb already demonstrates TypeScript, PostgreSQL, ingestion pipelines, algorithms and hands-on DigitalOcean operations.</p>
+      <p>Playlistnotes v2 should not repeat MKDb. Its value is proving that Samah can identify a product constraint, redesign the model, secure a multi-tenant consumer experience, ship polished public/private workflows, recruit users and measure behavior.</p>
+
+      <div class="resume-grid">
+        <article class="mini-card"><h3>Current evidence</h3><p>Enterprise reliability, cross-team delivery, high-volume debugging and measurable operational improvements.</p></article>
+        <article class="mini-card"><h3>MKDb evidence</h3><p>Data ingestion, relational modeling, ranking/similarity logic, TypeScript migration and production ownership.</p></article>
+        <article class="mini-card"><h3>v2 adds</h3><p>Consumer product thinking, managed auth, multi-tenant authorization, cross-provider identity, imports, sharing and retention analytics.</p></article>
+        <article class="mini-card"><h3>Hiring signal</h3><p>A complete product-owner narrative: problem framing, technical tradeoffs, execution, operations and measured user outcome.</p></article>
+      </div>
+
+      <div class="quote">“Re-architected a Spotify-dependent prototype into a secure, provider-independent music journal with cross-provider recording identity, collection imports, public/private sharing and measured user retention.”<cite>Target narrative—not a resume claim until the implementation and metrics are real.</cite></div>
+
+      <h3 style="margin-top:28px">Why this aligns with current NYC roles</h3>
+      <p class="muted">This is a directional market sample, not a census. Current $150K+ NYC product-engineering listings repeatedly emphasize end-to-end ownership, React/TypeScript, relational modeling, APIs, security and production operations:</p>
+      <ul>
+        <li><a href="https://jobs.ashbyhq.com/take2/783d5337-e4d7-42ad-8dc7-8b1c2669bc5a">Take2 · Product Engineer, $150K–$200K</a> — React, TypeScript, Node, Postgres/MySQL, scalable data modeling and product initiatives.</li>
+        <li><a href="https://jobs.ashbyhq.com/kaizenlabs/a18e463d-df97-4678-a097-8c89befc34bb/">Kaizen Labs · Software Engineer, Product, $150K–$200K</a> — React, Next.js, TypeScript, Node, PostgreSQL and Prisma.</li>
+        <li><a href="https://jobs.ashbyhq.com/Sequence/e1977983-8e05-4f62-b25c-3741d445b902/">Sequence · Product Engineer, $180K–$190K</a> — React, TypeScript, PostgreSQL, reliability and a cross-functional product team.</li>
+        <li><a href="https://jobs.ashbyhq.com/conveo/b06873ea-e085-4786-9c55-f78a28ab05c1">Conveo · Product Engineer, $180K–$240K</a> — React/TypeScript, PostgreSQL, APIs, background workflows and working backward from customers.</li>
+      </ul>
+
+      <div class="callout success"><strong>Important realism:</strong> no side project guarantees a $150K+ offer. The project helps when it produces credible evidence, a clear interview story and preferably real users. Continue applying while the sprint runs.</div>
+
+      <h3 style="margin-top:27px">Resume evidence to collect</h3>
+      <div class="checklist">
+        <div class="check"><span class="box"></span><span>Invited, activated and later-day returning users</span></div>
+        <div class="check"><span class="box"></span><span>Notes and collection imports completed</span></div>
+        <div class="check"><span class="box"></span><span>Import sizes, duration and failure rates</span></div>
+        <div class="check"><span class="box"></span><span>API p95 latency and error rate</span></div>
+        <div class="check"><span class="box"></span><span>Automated auth/privacy tests</span></div>
+        <div class="check"><span class="box"></span><span>CI/CD and production deployment frequency</span></div>
+        <div class="check"><span class="box"></span><span>Backup/restore exercise and operational runbook</span></div>
+        <div class="check"><span class="box"></span><span>Direct user feedback and resulting iteration</span></div>
+      </div>
+    </section>
+
+    <section id="done" class="section-card">
+      <div class="section-head"><div><span class="section-number">08 · DEFINITION OF DONE</span><h2>The v2 rescue is complete when…</h2></div></div>
+      <div class="checklist">
+        <div class="check"><span class="box"></span><span>New users sign in without Spotify.</span></div>
+        <div class="check"><span class="box"></span><span>Core acceptance tests pass with no Spotify API credentials or OAuth callback.</span></div>
+        <div class="check"><span class="box"></span><span>A Spotify track link creates an internal recording and private note.</span></div>
+        <div class="check"><span class="box"></span><span>A public playlist link can create a reference/Embed but infers zero track items.</span></div>
+        <div class="check"><span class="box"></span><span>An Exportify CSV creates an ordered collection snapshot.</span></div>
+        <div class="check"><span class="box"></span><span>Every recording has a Playlistnotes UUID and provider mappings.</span></div>
+        <div class="check"><span class="box"></span><span>Server-side ownership protects every private read and mutation.</span></div>
+        <div class="check"><span class="box"></span><span>Private, unlisted and public behavior is tested.</span></div>
+        <div class="check"><span class="box"></span><span>Stable Playlistnotes share links expose only intended fields.</span></div>
+        <div class="check"><span class="box"></span><span>Publishing a collection never implicitly publishes private notes.</span></div>
+        <div class="check"><span class="box"></span><span>CI passes and production has monitoring and verified backups.</span></div>
+        <div class="check"><span class="box"></span><span>Ten people can be invited without Spotify developer onboarding.</span></div>
+        <div class="check"><span class="box"></span><span>Analytics can observe first-note activation and later-day return.</span></div>
+      </div>
+      <div class="callout"><strong>Explicitly postponed:</strong> React Native, iOS, E2EE, billing, Apple login, collaboration, automatic Spotify sync, full Last.fm mirroring, full MusicBrainz ingestion, recommendations, attachments, microservices and Kubernetes.</div>
+    </section>
+
+    <section id="files" class="section-card">
+      <div class="section-head"><div><span class="section-number">09 · IMPLEMENTATION HANDOFF</span><h2>Files for coding agents</h2></div></div>
+      <p>Keep these files together. <code>AGENTS.md</code> is the authoritative model-agnostic contract. <code>CLAUDE.md</code> adapts the same plan for Claude Code and requires Claude to read the full contract first.</p>
+      <div class="files">
+        <a class="file-card" href="AGENTS.md"><code>AGENTS.md</code><strong>Complete implementation contract</strong><p class="small muted">Architecture, domain model, auth rules, sprint, tests, deployment, non-goals and definition of done.</p></a>
+        <a class="file-card" href="CLAUDE.md"><code>CLAUDE.md</code><strong>Claude Code execution guide</strong><p class="small muted">Session protocol, locked stack, implementation order, validation and reporting conventions.</p></a>
+      </div>
+    </section>
+
+    <section class="section-card">
+      <div class="section-head"><div><span class="section-number">10 · SOURCES &amp; CONTEXT</span><h2>References used in this plan</h2></div></div>
+      <ul class="small">
+        <li>Samah Saeed, attached resume PDF, created June 16, 2026.</li>
+        <li><a href="https://github.com/sama7/playlistnotes">Playlistnotes v1 repository</a> and <a href="https://github.com/sama7/mkdb">MKDb repository</a>.</li>
+        <li><a href="https://developer.spotify.com/documentation/web-api/concepts/quota-modes">Spotify quota modes</a>, <a href="https://developer.spotify.com/blog/2026-02-06-update-on-developer-access-and-platform-security">February 2026 access update</a>, <a href="https://developer.spotify.com/documentation/web-api/tutorials/february-2026-migration-guide">Development Mode migration guide</a>, <a href="https://developer.spotify.com/blog/2026-07-23-web-api-quota-updates">July 2026 quota update</a>, and the <a href="https://developer.spotify.com/policy">Developer Policy</a>.</li>
+        <li><a href="https://developer.spotify.com/documentation/web-api/reference/get-playlists-items">Spotify Get Playlist Items</a> documents the authenticated playlist-content boundary.</li>
+        <li><a href="https://developer.spotify.com/documentation/embeds/tutorials/creating-an-embed">Spotify Embed creation</a>, <a href="https://developer.spotify.com/documentation/embeds/tutorials/using-the-oembed-api">using oEmbed</a>, and the <a href="https://developer.spotify.com/documentation/embeds/reference/oembed">oEmbed reference</a>.</li>
+        <li><a href="https://react.dev/blog/2025/02/14/sunsetting-create-react-app">React: Sunsetting Create React App</a>.</li>
+        <li><a href="https://www.postgresql.org/docs/current/datatype-json.html">PostgreSQL: JSON and JSONB</a>, <a href="https://www.postgresql.org/docs/current/textsearch.html">full-text search</a>, and <a href="https://www.postgresql.org/docs/current/pgtrgm.html">trigram similarity</a>.</li>
+        <li><a href="https://docs.digitalocean.com/products/databases/">DigitalOcean Managed Databases</a> and <a href="https://www.digitalocean.com/pricing/managed-databases">current pricing</a>.</li>
+        <li><a href="https://www.last.fm/api/tos">Last.fm API terms</a>, <a href="https://www.last.fm/api/show/user.getRecentTracks">recent tracks API</a>, and <a href="https://musicbrainz.org/doc/MusicBrainz_API">MusicBrainz API</a>.</li>
+      </ul>
+      <p class="small muted">This report is a product and engineering recommendation, not legal advice. Recheck third-party terms and live job listings before commercial launch or application use.</p>
+    </section>
+  </main>
+
+  <footer class="shell">Playlistnotes v2 rescue plan · prepared for Samah Saeed · revised August 6, 2026</footer>
+</body>
+</html>
