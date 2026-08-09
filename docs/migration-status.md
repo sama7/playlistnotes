@@ -2,9 +2,10 @@
 
 Durable handoff between sessions. Read this before relying on chat context. Update it after every phase and before ending a substantial session.
 
-**Last updated:** August 7, 2026
+**Last updated:** August 9, 2026
 **Current phase:** Phase 1 — foundation
-**Next milestone:** **Checkpoint 1a — awaiting the user's hands-on schema review.** Run `npm run dev` (http://localhost:3100) and `npm run db:studio`, then approve or change the model before any Managed PostgreSQL spend or droplet change.
+**Checkpoint 1a: PASSED.** The schema review produced two corrections, both now merged — `album_artists` was built, and the `Provider` enum was cut back to authoritative sources.
+**Next milestone:** Clerk development instance and the lazy user upsert, then Managed PostgreSQL and the first gated deployment. Both blocked on account creation and provisioning approval.
 
 ---
 
@@ -21,7 +22,8 @@ Durable handoff between sessions. Read this before relying on chat context. Upda
 | v1 during the sprint | Stays running and **writable**. Code frozen. Not rebuilt. |
 | Package manager | npm. |
 | Playlist links | Provenance on a collection only — never create a collection or items. |
-| Artists / albums | Entity tables ship now, linked from provider IDs only. No `album_artists` join table yet. |
+| Artists / albums | Entity tables, linked from provider IDs only. **Both** `recording_artists` and `album_artists` are join tables carrying `position` and `credit_name`; `primary_artist_id` was removed because a single FK silently dropped the second artist of a joint album. |
+| Trusted providers | `spotify`, `apple_music`, `deezer`, `tidal`, `musicbrainz`, `discogs`. **A trusted provider is one whose identifier is issued by an authority, not chosen by an uploader** (`AGENTS.md` §3a.4). YouTube, Bandcamp, SoundCloud, Last.fm and RYM are excluded. |
 | Clerk webhooks | Out of scope. Lazy upsert on first authenticated request. |
 
 ## Operational facts
