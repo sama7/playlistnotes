@@ -134,6 +134,28 @@ Complete apart from Playwright. **100 tests: 52 unit, 48 integration.**
 - `GET /notes` signed out → lands on sign-in; the string "Your notes" appears zero times
 - `X-Robots-Tag: noindex, nofollow` present on the share page
 
+### Browser smoke test — passed, August 9 2026
+
+Driven through the Chrome extension end to end, signed in as a real Clerk user:
+
+| Step | Result |
+| --- | --- |
+| Paste a track link, empty title/artist | Live oEmbed returned "CN TOWER" **with no Spotify credentials**; title prefilled, artist requested |
+| Supply the artist, save | Note saved, private by default |
+| Paste a playlist link | Refused with the CSV explanation; **no collection, no items, no recording** |
+| Paste `open.spotify.com.evil.com/track/…` | Refused |
+| Create share link, open it | Note rendered |
+| Rotate the link, revisit the old URL | **404 — rotation revokes** |
+
+Unplanned confirmation: after the capture, `recordings` stayed at 4. The browser
+capture of CN TOWER matched the **seeded** recording by exact Spotify ID rather
+than duplicating it — the deduplication property, demonstrated with real data.
+
+**One bug found only by using it.** `artistDisplay` came solely from the user's
+fallback while oEmbed has no artist field, so an empty first paste could never
+succeed. Every test supplied an artist and shared the blind spot. Fixed, with
+three regression tests.
+
 ### Still to do in Phase 2
 
 Playwright happy path and privacy path. Clerk needs testing tokens for automated sign-in, so this is the one part that needs setup rather than just writing.
