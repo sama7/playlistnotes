@@ -44,13 +44,38 @@ enum RecordingOrigin {
   user
 }
 
+/// Sources permitted to establish the identity of a recording, artist or album.
+///
+/// The governing rule: **a trusted provider is one where the identifier is
+/// issued by an authority, not chosen by an uploader.**
+///
+///   - spotify, apple_music, deezer, tidal — IDs issued by the platform, whose
+///     catalog is fed by labels and distributors through a verified pipeline.
+///   - musicbrainz, discogs — IDs issued by curated, moderated, edit-audited
+///     databases.
+///
+/// Deliberately ABSENT: youtube, soundcloud, bandcamp. On those, identifiers
+/// attach to *uploads* — the ID is real, but what it points at is chosen by
+/// whoever uploaded it. A channel can be named "Drake - Topic" by anyone, so
+/// no display-string heuristic can make them safe; hardening would need an API
+/// key, quota, and an allowlist, to gain nothing the sources above don't
+/// already provide.
+///
+/// Also absent: lastfm (listening history, never an authority) and rym (no
+/// public API, and its terms forbid scraping). Add a value back only when a
+/// concrete need appears — that is a one-line migration.
+///
+/// This does NOT restrict what users may write about. Anything unfindable can
+/// still be entered by hand; it simply stays `origin = user`, scoped to its
+/// creator, and unable to be promoted into shared truth by an unverifiable
+/// source. Spam is free to exist privately.
 enum Provider {
   spotify
-  lastfm
-  musicbrainz
   apple_music
-  youtube
-  bandcamp
+  deezer
+  tidal
+  musicbrainz
+  discogs
 }
 
 enum ImportStatus {
