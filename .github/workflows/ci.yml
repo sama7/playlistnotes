@@ -103,6 +103,11 @@ jobs:
           # A build-time placeholder. Runtime URLs come from the deployed
           # environment so no hostname is ever baked into stored records.
           APP_BASE_URL: https://v2.playlistnotes.io
+          # Prerendering evaluates ClerkProvider, so the build genuinely
+          # requires a publishable key. It is a PUBLIC value (it ships to the
+          # browser), so a repository variable is the right home for it — not a
+          # secret. CLERK_SECRET_KEY is never needed at build time.
+          NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ vars.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
 
       - name: Package artifact
         run: |
