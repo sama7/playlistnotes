@@ -11,6 +11,14 @@
 
 import { spawnSync } from "node:child_process";
 
+// Unlike the Prisma CLI, tsx does not read .env. Load it when present; in CI
+// the environment supplies these directly and there is no file to read.
+try {
+  process.loadEnvFile();
+} catch {
+  // no .env on disk — fall through to the assertions below
+}
+
 const ALLOWED_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "postgres", "db"]);
 const ALLOWED_DB_SUFFIXES = ["_dev", "_test"];
 
