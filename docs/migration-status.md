@@ -59,6 +59,8 @@ Durable handoff between sessions. Read this before relying on chat context. Upda
 ## Completed
 
 - **Phase 0.** `v2` branch created from `main` at `32d028e`. `AGENTS.md` and `CLAUDE.md` reconciled with all decisions above and committed (`5b2de48`). Report archived to `docs/v2-plan/` as non-normative with a divergence table.
+- **DR backup taken** (August 9) — see the section below.
+- **v1 application source removed** from the `v2` branch: 37 files, verified recoverable from `main`, `develop` and `github/main` first. `config.env` untouched.
 - **Phase 1, through the schema.** Next.js 16 / React 19 / TypeScript 5.9 / Prisma 6.19 scaffold, full v2 schema, initial migration, seed data, guarded local reset, CI workflow (`3f7a7d5`, `1943a0d`).
 
 ### Verification actually run — August 7, 2026
@@ -84,13 +86,37 @@ Not yet exercised: `test:integration` and `test:e2e` have configs but no test fi
 - **`next dev` writes into `AGENTS.md`.** Next 16 appends a `nextjs-agent-rules` block automatically (`node_modules/next/dist/server/lib/generate-agent-files.js`) and re-adds it if removed. Committed as-is. It also means Next 16 ships its own docs at `node_modules/next/dist/docs/` — read those before writing Next code in Phase 2, since 16 diverges from most training data.
 - **Local Node is x86-64 running under Rosetta 2** on Apple Silicon. Next warns about degraded performance. Not blocking; worth replacing with an arm64 build.
 
+## Disaster-recovery backup — DONE, August 9 2026
+
+Taken with the user's explicit approval. **The connection string never entered an agent transcript**, and per §3 of `AGENTS.md` the dump itself was never opened — only its file listing was read, to prove restorability.
+
+| | |
+| --- | --- |
+| Source | Heroku app `playlistnotes`, config var `MONGODB_URI`, database `playlistnotes_prod` (Atlas, `mongodb+srv`) |
+| Verified counts at dump time | **notes: 33, users: 34** — matching the expected figures exactly. Only these two collections exist. |
+| Artifact | `~/playlistnotes-v1-backup/pn-v1-20260809-134256.tar.gz.enc` |
+| Encryption | AES-256-CBC, PBKDF2, 600,000 iterations, passphrase held only by the user |
+| SHA-256 of the plaintext archive | `91ed2d850d5915163a8a37efa4f7c3557769b7c872db069fde70cf262a9a1caf` |
+| Recorded alongside | `pn-v1-20260809-134256.sha256` |
+| Restore rehearsal | Decrypted stream re-hashed and **matched the recorded checksum byte-for-byte** |
+| Cleanup | Plaintext archive and dump directory deleted; `~/.pn-mongo-uri` and `~/.pn-db-name` shredded |
+
+**This file contains live Spotify access and refresh tokens.** Treat it as a credential. Do not move it into the repository. Do not open it. Do not pass it to a model.
+
+To restore:
+
+```bash
+openssl enc -d -aes-256-cbc -pbkdf2 -iter 600000 \
+  -in pn-v1-20260809-134256.tar.gz.enc | tar -xzf -
+```
+
+Outstanding: the passphrase must live in the user's password manager, and `~/.pn-backup-pass` should then be deleted. **Without the passphrase the backup is unrecoverable.**
+
 ## Not yet done — blocked on the user
 
 | Blocked item | Needs |
 | --- | --- |
-| **Remove v1 application files** (`client/`, `routes/`, `db/`, `server.js`) | `git rm -r` was denied by the auto-mode classifier. They sit alongside v2 and are excluded from tsconfig/eslint, but the tree is half-migrated until they go. `main` retains everything. |
-| DR MongoDB backup | The user runs `mongodump` themselves; the connection string must never enter an agent transcript |
-| Sanitized migration export | Follows the DR backup |
+| Sanitized migration export | Only needed when legacy import is promoted into scope (post-core). `notes` in full plus `users` projected to `{user, lastModified}`. |
 | v1 screenshots | A browser session |
 | Push `v2`; branch protection on `main`; tag `v1-final` | Explicit approval — the only remote is `github` and `main` auto-deploys |
 | Clerk / Sentry / PostHog | Accounts to be created |
