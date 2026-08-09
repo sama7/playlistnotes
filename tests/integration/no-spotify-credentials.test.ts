@@ -134,3 +134,70 @@ describe("a playlist link creates nothing", () => {
     expect(capture.message).toMatch(/CSV/);
   });
 });
+
+describe("first paste with empty fields — the flow a real user actually takes", () => {
+  /**
+   * Regression. The original logic sourced artistDisplay only from the user's
+   * fallback, and oEmbed has no artist field, so a first paste with empty
+   * fields could never succeed — the happy path was unreachable. Every earlier
+   * test supplied an artist and so shared the blind spot.
+   */
+  it("returns the fetched title so the user fills one field, not two", async () => {
+    const capture = await captureFromSpotifyLink(
+      "https://open.spotify.com/track/4u43I0LP2Xf85OAS85eG0R",
+      {
+        fetchOEmbed: async () => ({
+          title: "CN TOWER",
+          thumbnailUrl: null,
+          retrievedAt: new Date().toISOString(),
+        }),
+      },
+    );
+
+    expect(capture).toMatchObject({ ok: false, reason: "needs-manual-metadata" });
+    if (capture.ok) return;
+    expect(capture.suggested?.title).toBe("CN TOWER");
+    expect(capture.message).toContain("CN TOWER");
+    expect(capture.message).toMatch(/doesn't include the artist/i);
+  });
+
+  it("saves once the artist is supplied on the second submit", async () => {
+    const fetchOEmbed = async () => ({
+      title: "CN TOWER",
+      thumbnailUrl: null,
+      retrievedAt: new Date().toISOString(),
+    });
+    const link = "https://open.spotify.com/track/4u43I0LP2Xf85OAS85eG0R";
+
+    const first = await captureFromSpotifyLink(link, { fetchOEmbed });
+    expect(first.ok).toBe(false);
+    if (first.ok) return;
+
+    const second = await captureFromSpotifyLink(link, {
+      fetchOEmbed,
+      fallback: {
+        title: first.suggested?.title ?? "",
+        artistDisplay: "PARTYNEXTDOOR & Drake",
+      },
+    });
+
+    expect(second.ok).toBe(true);
+    if (!second.ok) return;
+    expect(second.result.recording.title).toBe("CN TOWER");
+    expect(second.result.recording.artistDisplay).toBe("PARTYNEXTDOOR & Drake");
+  });
+
+  /** Never invent an artist: canonical metadata is write-once, so a guess here
+   *  would become everyone's guess. */
+  it("creates no recording while the artist is still missing", async () => {
+    await captureFromSpotifyLink("https://open.spotify.com/track/4u43I0LP2Xf85OAS85eG0R", {
+      fetchOEmbed: async () => ({
+        title: "CN TOWER",
+        thumbnailUrl: null,
+        retrievedAt: new Date().toISOString(),
+      }),
+    });
+
+    expect(await prisma.recording.count()).toBe(0);
+  });
+});

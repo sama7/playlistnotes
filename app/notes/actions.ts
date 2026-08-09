@@ -56,7 +56,10 @@ export async function captureAndCreateNote(
       // Only this refusal is recoverable by the user filling in more; the
       // others are explanations, not prompts.
       needsMetadata: capture.reason === "needs-manual-metadata",
-      values,
+      // Hand back the title oEmbed gave us so the user fills one field, not
+      // two. oEmbed never supplies an artist, so this branch is the norm on a
+      // first paste rather than an error case.
+      values: { ...values, title: values.title || capture.suggested?.title || "" },
     };
   }
 

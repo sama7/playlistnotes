@@ -217,3 +217,15 @@ blockquote.shared-note {
 
 details summary { cursor: pointer; font-size: 0.85rem; color: var(--muted); }
 details > * { margin-top: 0.6rem; }
+
+/* A prompt, not a failure — the artist request is the expected first-paste
+   path, so it must not read as an error. */
+.prompt {
+  color: var(--fg);
+  background: var(--line);
+  border: 1px solid var(--muted);
+  border-radius: 4px;
+  padding: 0.5rem 0.7rem;
+  margin: 0;
+  font-size: 0.9rem;
+}

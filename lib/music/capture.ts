@@ -17,7 +17,14 @@ import {
 
 export type CaptureOutcome =
   | { ok: true; result: ResolutionResult; metadataAvailable: boolean }
-  | { ok: false; reason: CaptureRefusal; message: string };
+  | {
+      ok: false;
+      reason: CaptureRefusal;
+      message: string;
+      /** What we did manage to learn, so the form can prefill rather than
+       *  making the user retype it. */
+      suggested?: { title?: string | null };
+    };
 
 export type CaptureRefusal =
   | "playlist"
@@ -81,9 +88,18 @@ export async function captureFromSpotifyLink(
 
   const oembed = await (options.fetchOEmbed ?? fetchSpotifyOEmbed)("track", ref.id);
 
-  // oEmbed returns a title string with no separate artist field, so it can
-  // never fully populate a recording on its own. When it fails entirely we ask
-  // the user rather than inventing anything — and we never block on it.
+  /**
+   * Verified against the live endpoint 2026-08-09: a track oEmbed response
+   * contains html, iframe_url, width, height, version, provider_name,
+   * provider_url, type, title, thumbnail_url and thumbnail dimensions — and
+   * **no artist field of any kind**.
+   *
+   * So oEmbed can supply the title and never the artist. The first paste is
+   * therefore expected to come back asking for one; that is a prompt, not a
+   * failure, and the title is handed back so the user fills one field rather
+   * than two. We never invent an artist, because canonical metadata is
+   * write-once and a guess here would become everyone's guess.
+   */
   const title = options.fallback?.title?.trim() || oembed?.title?.trim() || "";
   const artistDisplay = options.fallback?.artistDisplay?.trim() || "";
 
@@ -91,7 +107,10 @@ export async function captureFromSpotifyLink(
     return {
       ok: false,
       reason: "needs-manual-metadata",
-      message: "We couldn't fetch this track's details. Add the title and artist and we'll save it.",
+      message: title
+        ? `Found “${title}”. Spotify's public preview doesn't include the artist — add it and we'll save this.`
+        : "We couldn't fetch this track's details. Add the title and artist and we'll save it.",
+      suggested: { title: title || null },
     };
   }
 

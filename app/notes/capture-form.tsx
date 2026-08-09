@@ -68,7 +68,15 @@ export function CaptureForm() {
       </details>
 
       {state.error && (
-        <p id="capture-error" role="alert" className="error">
+        // Asking for the artist is the normal path, not a failure: Spotify's
+        // oEmbed has no artist field at all, so a first paste always lands
+        // here. Styling it as an error would put a red box in front of every
+        // user on every capture.
+        <p
+          id="capture-error"
+          role={state.needsMetadata ? "status" : "alert"}
+          className={state.needsMetadata ? "prompt" : "error"}
+        >
           {state.error}
         </p>
       )}
