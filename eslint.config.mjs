@@ -7,16 +7,9 @@ import typescriptConfig from "eslint-config-next/typescript";
  */
 const eslintConfig = [
   {
-    // v1 sources still present on this branch until they are removed.
-    ignores: [
-      "client/**",
-      "routes/**",
-      "db/**",
-      "server.js",
-      ".next/**",
-      "node_modules/**",
-      "prisma/migrations/**",
-    ],
+    // v1 source is gone from git; `client/` may still linger on disk as
+    // untracked build artifacts until it is deleted manually.
+    ignores: ["client/**", ".next/**", "node_modules/**", "prisma/migrations/**"],
   },
   ...coreWebVitals,
   ...typescriptConfig,

@@ -40,9 +40,6 @@
   ],
   "exclude": [
     "node_modules",
-    "client",
-    "routes",
-    "db",
-    "server.js"
+    "client"
   ]
 }
