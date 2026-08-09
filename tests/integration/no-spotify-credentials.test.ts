@@ -1,0 +1,136 @@
+import { PrismaClient } from "@prisma/client";
+import { afterAll, beforeEach, describe, expect, it } from "vitest";
+import { captureFromSpotifyLink } from "@/lib/music/capture";
+import { createNote, listNotes } from "@/lib/notes/service";
+
+const prisma = new PrismaClient();
+
+/**
+ * The core independence invariant, AGENTS.md §1.
+ *
+ * Everything below runs with **no Spotify Client ID, secret, access token,
+ * refresh token, OAuth callback, or SDK** — none are configured anywhere in
+ * this project, and the first test asserts that rather than assuming it.
+ *
+ * This is the whole reason v2 exists: v1 could not onboard a sixth user because
+ * Spotify identity was Playlistnotes identity. If these tests ever need a
+ * credential to pass, the rescue has failed.
+ */
+
+const oembedUnavailable = async () => null;
+
+beforeEach(async () => {
+  await prisma.note.deleteMany();
+  await prisma.recordingExternalId.deleteMany();
+  await prisma.recording.deleteMany();
+  await prisma.user.deleteMany();
+});
+
+afterAll(async () => {
+  await prisma.$disconnect();
+});
+
+describe("the core flow needs no Spotify credentials", () => {
+  it("has no Spotify credentials in the environment to begin with", () => {
+    for (const key of Object.keys(process.env)) {
+      expect(key).not.toMatch(/^SPOTIFY_/);
+    }
+  });
+
+  it("captures a track and saves a private note with oEmbed unavailable", async () => {
+    const user = await prisma.user.create({ data: { authSubject: `s_${crypto.randomUUID()}` } });
+
+    const capture = await captureFromSpotifyLink(
+      "https://open.spotify.com/track/4u43I0LP2Xf85OAS85eG0R",
+      {
+        fetchOEmbed: oembedUnavailable,
+        fallback: { title: "CN TOWER", artistDisplay: "PARTYNEXTDOOR & Drake" },
+      },
+    );
+
+    expect(capture.ok).toBe(true);
+    if (!capture.ok) return;
+    expect(capture.metadataAvailable).toBe(false);
+
+    const note = await createNote(user.id, {
+      recordingId: capture.result.recording.id,
+      body: "The city sounds under the intro are why this playlist starts here.",
+    });
+
+    expect(note.visibility).toBe("private");
+    expect(await listNotes(user.id)).toHaveLength(1);
+  });
+
+  it("uses oEmbed's title when it is available, without requiring it", async () => {
+    const capture = await captureFromSpotifyLink(
+      "https://open.spotify.com/track/0VaeksJaXy5R1nvcTMh3Xk",
+      {
+        fetchOEmbed: async () => ({
+          title: "Darling, I (feat. Teezo Touchdown)",
+          thumbnailUrl: null,
+          retrievedAt: new Date().toISOString(),
+        }),
+        // oEmbed carries no artist field, so the artist always comes from us.
+        fallback: { title: "", artistDisplay: "Tyler, The Creator" },
+      },
+    );
+
+    expect(capture.ok).toBe(true);
+    if (!capture.ok) return;
+    expect(capture.result.recording.title).toBe("Darling, I (feat. Teezo Touchdown)");
+    expect(capture.result.recording.artistDisplay).toBe("Tyler, The Creator");
+  });
+
+  it("asks for details rather than blocking when nothing is available", async () => {
+    const capture = await captureFromSpotifyLink(
+      "https://open.spotify.com/track/4u43I0LP2Xf85OAS85eG0R",
+      { fetchOEmbed: oembedUnavailable },
+    );
+
+    expect(capture).toMatchObject({ ok: false, reason: "needs-manual-metadata" });
+    expect(await prisma.recording.count()).toBe(0);
+  });
+
+  it("resolves repeated captures of one track to a single recording", async () => {
+    const opts = {
+      fetchOEmbed: oembedUnavailable,
+      fallback: { title: "CN TOWER", artistDisplay: "PARTYNEXTDOOR & Drake" },
+    };
+
+    await captureFromSpotifyLink("https://open.spotify.com/track/4u43I0LP2Xf85OAS85eG0R", opts);
+    await captureFromSpotifyLink("spotify:track:4u43I0LP2Xf85OAS85eG0R", opts);
+    await captureFromSpotifyLink(
+      "https://open.spotify.com/intl-pt/track/4u43I0LP2Xf85OAS85eG0R?si=xyz",
+      opts,
+    );
+
+    expect(await prisma.recording.count()).toBe(1);
+  });
+});
+
+describe("a playlist link creates nothing", () => {
+  /** The definition-of-done item, asserted against the database rather than
+   *  against a return value alone. */
+  it("creates no collection, no items, and no recording", async () => {
+    const capture = await captureFromSpotifyLink(
+      "https://open.spotify.com/playlist/37i9dQZF1DX4WYpdgoIcn6",
+      { fetchOEmbed: oembedUnavailable },
+    );
+
+    expect(capture).toMatchObject({ ok: false, reason: "playlist" });
+    expect(await prisma.collection.count()).toBe(0);
+    expect(await prisma.collectionItem.count()).toBe(0);
+    expect(await prisma.recording.count()).toBe(0);
+  });
+
+  it("explains the limitation instead of failing silently", async () => {
+    const capture = await captureFromSpotifyLink(
+      "https://open.spotify.com/playlist/37i9dQZF1DX4WYpdgoIcn6",
+      { fetchOEmbed: oembedUnavailable },
+    );
+
+    if (capture.ok) throw new Error("expected refusal");
+    expect(capture.message).toMatch(/can't read a playlist's tracks/i);
+    expect(capture.message).toMatch(/CSV/);
+  });
+});
