@@ -131,6 +131,24 @@ Unless the user explicitly changes a decision, implement the following:
 15. No billing, end-to-end encryption, React Native, collaboration, or automatic Spotify synchronization in the rescue sprint.
 16. Clerk **webhooks are out of scope**. Resolve the local user by lazy upsert on the first authenticated request, using `INSERT … ON CONFLICT (auth_subject)` so concurrent first requests create exactly one row.
 
+### Why Clerk — examined August 9, 2026, not inherited
+
+Clerk arrived in this contract as an unexamined default. It was compared against SuperTokens and survived, for these reasons. Recorded so the question is not relitigated from stale information.
+
+**Cost, at this project's realistic scale.** Clerk's free tier is 50,000 monthly *retained* users (someone counts only if they return 24h after signing up), then $25/mo. SuperTokens' managed service is free to 5,000 MAU and then carries a **$100/month minimum** — a cliff, not a ramp. Clerk is therefore cheaper across the entire plausible range, not more expensive. Widely-circulated complaints about Clerk pricing date from its September 2023 change and describe a tier that no longer exists.
+
+**Self-hosting is free in fees, not in resources.** The SuperTokens core is a JVM service whose own guidance is a ~1 GB baseline. The droplet is 2 GB and already runs MKDb, mankbot, and MKDb's PostgreSQL; adding a JVM would consume the headroom that keeps the OOM killer away from MKDb's database, and would in practice require a 4 GB droplet — spending ~$12/mo more to replace something currently costing nothing, plus a service to patch on a 2–3 h/day budget.
+
+**What SuperTokens genuinely wins, and is worth revisiting for:** it is Apache 2.0 and self-hostable (no vendor pricing risk), user data stays in your own PostgreSQL, and **passkeys are included free** whereas Clerk gates them behind Pro at $25/mo.
+
+**Why the lock-in risk is acceptable:** `users.auth_subject` is a mapping, never a primary key. Every note, collection, and import is scoped by a Playlistnotes UUID, so changing provider means exporting users, creating them elsewhere, and updating one column. That is deliberate insurance, and it is what makes this decision reversible.
+
+**Revisit when** any of these becomes true: approaching 50,000 MRU; Clerk changes pricing again; data sovereignty becomes a requirement; or passkeys become urgent enough that Pro's cost bites.
+
+**Sessions.** Clerk's default is a 7-day maximum lifetime with inactivity timeout disabled — so idle time never signs a user out, but everyone re-authenticates weekly. Extending the maximum requires a paid plan in production. Note the interaction with §13: the validation metric is later-day return, and a returning user may meet a sign-in prompt at exactly that moment. Passwordless re-authentication keeps that to about thirty seconds, and passkeys would make it near-instant.
+
+**No passwords.** §4.2 stands and was re-confirmed. Passwords are the dominant account-compromise vector via reuse and credential stuffing, they drag in a reset flow and its attack surface, and every added method multiplies account-linking edge cases. They also solve nothing users want here: the complaint that motivates them is "don't make me type a code," and a password is more typing plus memory. Passkeys answer that properly. Clerk enables password sign-up by default — keep it off.
+
 ## 5. Target architecture
 
 Build a modular monolith. Do not create microservices for the initial release.
