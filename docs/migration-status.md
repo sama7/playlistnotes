@@ -114,6 +114,30 @@ openssl enc -d -aes-256-cbc -pbkdf2 -iter 600000 \
 
 Outstanding: the passphrase must live in the user's password manager, and `~/.pn-backup-pass` should then be deleted. **Without the passphrase the backup is unrecoverable.**
 
+## Phase 2 — secure note vertical slice, August 9 2026
+
+Complete apart from Playwright. **100 tests: 52 unit, 48 integration.**
+
+| Piece | Where | Notes |
+| --- | --- | --- |
+| Link parsing | `lib/music/spotify/parse-link.ts` | The security boundary. Refuses non-Spotify hosts, look-alikes, embedded credentials, link-local and loopback addresses, and non-http schemes — before any network call is contemplated. Playlists are *recognised* so they can be refused. |
+| oEmbed | `lib/music/spotify/oembed.ts` | Best-effort by construction; every failure returns `null`. Takes a kind and an id, never a URL, so it cannot be pointed at an arbitrary host. |
+| Resolution | `lib/music/resolve-recording.ts` | Exact `(provider, provider_id)` only. Concurrent capture yields one recording via the unique index; merges are followed rather than returned. |
+| Capture | `lib/music/capture.ts` | Ties the three together. Uses no Spotify credential of any kind. |
+| Notes | `lib/notes/service.ts` | `ownerId` is always the first argument and always from the session. Scoping is in the WHERE clause, not a post-fetch check. |
+| UI | `app/notes/`, `app/n/[token]/` | Capture form, note list with inline edit, share/rotate/unpublish, anonymous share page. |
+
+### Verified anonymously, without a browser
+
+- `GET /n/<token>` → 200, renders the note, **leaks no UUID and no owner identity**
+- A bogus token → 404
+- `GET /notes` signed out → lands on sign-in; the string "Your notes" appears zero times
+- `X-Robots-Tag: noindex, nofollow` present on the share page
+
+### Still to do in Phase 2
+
+Playwright happy path and privacy path. Clerk needs testing tokens for automated sign-in, so this is the one part that needs setup rather than just writing.
+
 ## Not yet done — blocked on the user
 
 | Blocked item | Needs |
