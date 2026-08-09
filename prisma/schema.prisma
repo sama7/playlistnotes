@@ -103,9 +103,9 @@ model Artist {
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  externalIds     ArtistExternalId[]
+  externalIds      ArtistExternalId[]
   recordingCredits RecordingArtist[]
-  primaryAlbums   Album[]           @relation("AlbumPrimaryArtist")
+  albumCredits     AlbumArtist[]
 
   @@map("artists")
 }
@@ -136,18 +136,20 @@ model ArtistExternalId {
   @@map("artist_external_ids")
 }
 
-/// There is deliberately no `album_artists` join table. Album-level multi-artist
-/// credits are far rarer than track-level features and nothing surfaces them
-/// yet. This is safe because the raw `Album Artist URI(s)` list is retained in
-/// `sourceMetadata`, so a future join table is a pure backfill from identifiers
-/// already held rather than a reconstruction from strings.
+/// Albums mirror recordings exactly: an ordered set of credited artists in a
+/// join table, plus the raw display string. There is deliberately no
+/// `primary_artist_id` — a single foreign key silently drops the second artist
+/// of a joint release (the real case: $ome $exy $ongs 4 U is credited
+/// "PARTYNEXTDOOR & Drake"), which is precisely how an artist page ends up
+/// missing an album. One shape, one rule, for both tracks and albums.
 model Album {
   id    String @id @default(uuid()) @db.Uuid
   title String
 
-  primaryArtistId String? @map("primary_artist_id") @db.Uuid
-  /// Raw album-artist string exactly as the source gave it.
-  artistDisplay   String? @map("artist_display")
+  /// Raw album-artist string exactly as the source gave it. Display only —
+  /// never the browse key. Deriving a browse key from a display string is what
+  /// makes Last.fm file a two-artist track under one artist.
+  artistDisplay String? @map("artist_display")
 
   releaseDate DateTime? @map("release_date") @db.Date
   /// Linked, never rehosted.
@@ -158,12 +160,33 @@ model Album {
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  primaryArtist Artist?           @relation("AlbumPrimaryArtist", fields: [primaryArtistId], references: [id], onDelete: SetNull)
-  externalIds   AlbumExternalId[]
-  recordings    Recording[]
+  artists     AlbumArtist[]
+  externalIds AlbumExternalId[]
+  recordings  Recording[]
 
-  @@index([primaryArtistId])
   @@map("albums")
+}
+
+/// The album-level twin of RecordingArtist, for the same three reasons: a real
+/// foreign key Postgres can enforce, a paginable reverse lookup for artist
+/// pages, and somewhere to put per-credit facts.
+///
+/// `position` is the source's ordering as captured — never a canonical claim
+/// about billing.
+model AlbumArtist {
+  albumId  String @map("album_id") @db.Uuid
+  artistId String @map("artist_id") @db.Uuid
+
+  position   Int
+  creditName String? @map("credit_name")
+
+  album  Album  @relation(fields: [albumId], references: [id], onDelete: Cascade)
+  artist Artist @relation(fields: [artistId], references: [id], onDelete: Cascade)
+
+  @@id([albumId, artistId])
+  @@unique([albumId, position])
+  @@index([artistId])
+  @@map("album_artists")
 }
 
 model AlbumExternalId {

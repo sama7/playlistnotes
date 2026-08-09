@@ -33,8 +33,47 @@ const spotifyTrack = (id: string) => `https://open.spotify.com/track/${id}`;
 const spotifyArtist = (id: string) => `https://open.spotify.com/artist/${id}`;
 const spotifyAlbum = (id: string) => `https://open.spotify.com/album/${id}`;
 
+/**
+ * Clear the tables this seed owns, in foreign-key-safe order, so the seed is
+ * idempotent and re-runnable. This is why refreshing dev data does NOT require
+ * `prisma migrate reset` — reset is reserved for proving the migration history
+ * applies to a genuinely empty database.
+ *
+ * Guarded the same way as scripts/db-reset-local.ts: disposable targets only.
+ */
+async function clearSeedTables() {
+  const url = process.env.DATABASE_URL ?? "";
+  const { hostname, pathname } = new URL(url);
+  const database = pathname.replace(/^\//, "");
+  const local = ["localhost", "127.0.0.1", "::1", "postgres", "db"].includes(hostname);
+  const disposable = database.endsWith("_dev") || database.endsWith("_test");
+
+  if (process.env.NODE_ENV === "production" || !local || !disposable) {
+    throw new Error(
+      `Refusing to seed '${database}' on '${hostname}': not a disposable local database.`,
+    );
+  }
+
+  await prisma.noteTag.deleteMany();
+  await prisma.note.deleteMany();
+  await prisma.collectionItem.deleteMany();
+  await prisma.collection.deleteMany();
+  await prisma.import.deleteMany();
+  await prisma.tag.deleteMany();
+  await prisma.recordingArtist.deleteMany();
+  await prisma.recordingExternalId.deleteMany();
+  await prisma.recording.deleteMany();
+  await prisma.albumArtist.deleteMany();
+  await prisma.albumExternalId.deleteMany();
+  await prisma.album.deleteMany();
+  await prisma.artistExternalId.deleteMany();
+  await prisma.artist.deleteMany();
+  await prisma.user.deleteMany();
+}
+
 async function main() {
   console.log("Seeding…");
+  await clearSeedTables();
 
   // --- Users (synthetic) ---------------------------------------------------
   const ada = await prisma.user.create({
@@ -84,14 +123,19 @@ async function main() {
 
   // --- Albums --------------------------------------------------------------
   // $ome $exy $ongs 4 U is a JOINT album: MusicBrainz credits it to
-  // "PARTYNEXTDOOR & Drake". There is no album_artists join table, so
-  // primary_artist_id holds the first credit and the full URI list is retained
-  // in source_metadata — which is what makes that deferral a pure backfill.
+  // "PARTYNEXTDOOR & Drake". BOTH artists are linked, so an artist page for
+  // either one finds it. A single primary_artist_id would have silently
+  // dropped Drake — which is exactly how Last.fm loses the second artist.
   const sssfu = await prisma.album.create({
     data: {
       title: "$ome $exy $ongs 4 U",
-      primaryArtistId: partynextdoor.id,
       artistDisplay: "PARTYNEXTDOOR & Drake",
+      artists: {
+        create: [
+          { artistId: partynextdoor.id, position: 0 },
+          { artistId: drake.id, position: 1 },
+        ],
+      },
       releaseDate: new Date("2025-02-14"),
       sourceMetadata: {
         albumArtistUris: [
@@ -114,8 +158,8 @@ async function main() {
   const iceman = await prisma.album.create({
     data: {
       title: "ICEMAN",
-      primaryArtistId: drake.id,
       artistDisplay: "Drake",
+      artists: { create: [{ artistId: drake.id, position: 0 }] },
       releaseDate: new Date("2026-05-15"),
       sourceMetadata: {
         albumArtistUris: ["spotify:artist:3TVXtAsR1Inumwj472S9r4"],
@@ -135,8 +179,8 @@ async function main() {
   const chromakopia = await prisma.album.create({
     data: {
       title: "CHROMAKOPIA",
-      primaryArtistId: tyler.id,
       artistDisplay: "Tyler, The Creator",
+      artists: { create: [{ artistId: tyler.id, position: 0 }] },
       releaseDate: new Date("2024-10-28"),
       sourceMetadata: {
         albumArtistUris: ["spotify:artist:4V8LLVI7PbaPR0K2TGSxFF"],
