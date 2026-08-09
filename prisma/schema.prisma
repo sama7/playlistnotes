@@ -492,6 +492,43 @@ model Import {
 }
 
 // ---------------------------------------------------------------------------
+// Instrumentation
+// ---------------------------------------------------------------------------
+
+/// Records when a RETURNING visitor is shown a sign-in prompt, and how long it
+/// had been since they last signed in.
+///
+/// Exists to answer one scheduled question (AGENTS.md §4, "Sessions"): is
+/// Clerk's non-sliding 7-day session actually biting? Retention measured
+/// through a login wall cannot tell "did not care" from "could not be bothered
+/// to sign in again", so this measures the wall itself.
+///
+/// Deliberately pseudonymous. There is no user ID here and there cannot be —
+/// the visitor is signed out, so we do not know who they are. `visitorId` is a
+/// random first-party browser identifier carrying no personal data. Nothing
+/// here is linkable to an account, an email, or a note.
+///
+/// Unique on (visitorId, occurredOn) so refreshing the sign-in page records
+/// one event per browser per day rather than one per keystroke.
+model AuthLapse {
+  id        String @id @default(uuid()) @db.Uuid
+  visitorId String @map("visitor_id")
+
+  /// Calendar date of the lapse, for daily deduplication.
+  occurredOn DateTime @map("occurred_on") @db.Date
+
+  /// How many days since this browser last had a live session. Around 7 points
+  /// at Clerk's maximum lifetime; much less suggests something else is wrong.
+  daysSinceLastSignIn Int @map("days_since_last_sign_in")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@unique([visitorId, occurredOn])
+  @@index([occurredOn])
+  @@map("auth_lapses")
+}
+
+// ---------------------------------------------------------------------------
 // Tags
 // ---------------------------------------------------------------------------
 

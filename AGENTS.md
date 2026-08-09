@@ -145,7 +145,15 @@ Clerk arrived in this contract as an unexamined default. It was compared against
 
 **Revisit when** any of these becomes true: approaching 50,000 MRU; Clerk changes pricing again; data sovereignty becomes a requirement; or passkeys become urgent enough that Pro's cost bites.
 
-**Sessions.** Clerk's default is a 7-day maximum lifetime with inactivity timeout disabled — so idle time never signs a user out, but everyone re-authenticates weekly. Extending the maximum requires a paid plan in production. Note the interaction with §13: the validation metric is later-day return, and a returning user may meet a sign-in prompt at exactly that moment. Passwordless re-authentication keeps that to about thirty seconds, and passkeys would make it near-instant.
+**Sessions — a scheduled decision, not a settled one.** Clerk's default maximum lifetime is 7 days, is **fixed from sign-in rather than sliding with activity**, and cannot be changed on the free tier in production. A user who opens Playlistnotes daily is still signed out every seventh day. SuperTokens, by contrast, defaults its refresh token to **100 days and does slide** — any activity extends it — and it is a plain config value with no paywall.
+
+This matters more than a normal UX papercut for two reasons: a journal is used at roughly weekly cadence, which is almost exactly where a 7-day hard expiry lands; and §13's validation metric is later-day return, so the friction sits directly on the measurement. Retention measured through a login wall cannot distinguish "did not care" from "could not be bothered to re-authenticate."
+
+**Decision, August 9 2026: do not switch during Phase 2; re-evaluate at the invite gate.** With one user, session length is irrelevant; with ten testers it is not. Building the note vertical slice matters more than re-plumbing working auth, and migration stays cheap because there are no passwords — users re-verify by email and only `auth_subject` changes.
+
+**The likely outcome is SuperTokens' managed tier**, which is free below 5,000 MAU, gives 100-day sliding sessions, includes passkeys, and needs no JVM beside MKDb's PostgreSQL. Its $100/month floor above 5,000 MAU is a far-away problem; Clerk's session friction is a next-week problem.
+
+**Do not decide this from intuition.** `auth_lapses` records, pseudonymously, when a returning visitor meets a sign-in prompt and how long it had been. Read it before the invite goes out.
 
 **No passwords.** §4.2 stands and was re-confirmed. Passwords are the dominant account-compromise vector via reuse and credential stuffing, they drag in a reset flow and its attack surface, and every added method multiplies account-linking edge cases. They also solve nothing users want here: the complaint that motivates them is "don't make me type a code," and a password is more typing plus memory. Passkeys answer that properly. Clerk enables password sign-up by default — keep it off.
 

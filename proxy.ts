@@ -1,4 +1,11 @@
+import { NextResponse } from "next/server";
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
+import {
+  BREADCRUMB_MAX_AGE_SECONDS,
+  LAST_SEEN_COOKIE,
+  VISITOR_COOKIE,
+  epochDay,
+} from "@/lib/session-lapse";
 
 /**
  * Next.js 16 renamed the `middleware` file convention to `proxy`. The file must
@@ -26,6 +33,34 @@ export default clerkMiddleware(async (auth, request) => {
   if (!isPublicRoute(request)) {
     await auth.protect();
   }
+
+  const { userId } = await auth();
+  if (!userId) return;
+
+  // Signed in: refresh the breadcrumb that will outlive this session. Only the
+  // proxy can write cookies here — Server Components cannot — which is why the
+  // instrumentation lives at this layer rather than beside the query it feeds.
+  const today = String(epochDay());
+  const hasVisitor = request.cookies.has(VISITOR_COOKIE);
+  const lastSeenIsCurrent = request.cookies.get(LAST_SEEN_COOKIE)?.value === today;
+  if (hasVisitor && lastSeenIsCurrent) return;
+
+  const response = NextResponse.next();
+  const options = {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+    maxAge: BREADCRUMB_MAX_AGE_SECONDS,
+  } as const;
+
+  if (!hasVisitor) {
+    response.cookies.set(VISITOR_COOKIE, crypto.randomUUID(), options);
+  }
+  if (!lastSeenIsCurrent) {
+    response.cookies.set(LAST_SEEN_COOKIE, today, options);
+  }
+  return response;
 });
 
 export const config = {
