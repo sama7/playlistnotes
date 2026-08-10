@@ -30,9 +30,52 @@ afterAll(async () => {
 });
 
 describe("the core flow needs no Spotify credentials", () => {
-  it("has no Spotify credentials in the environment to begin with", () => {
+  /**
+   * The invariant is NOT "no Spotify variable exists" — Client Credentials is
+   * sanctioned optional enrichment, so a client id and secret are legitimate.
+   * It is that **no user-OAuth surface exists**: no access token, no refresh
+   * token, no redirect URI. Those are what the five-user Development Mode cap
+   * counts, and v2 has none of them.
+   */
+  it("has no Spotify USER-OAuth credentials in the environment", () => {
     for (const key of Object.keys(process.env)) {
-      expect(key).not.toMatch(/^SPOTIFY_/);
+      expect(key).not.toMatch(/^SPOTIFY_(ACCESS_TOKEN|REFRESH_TOKEN|REDIRECT_URI)/);
+    }
+  });
+
+  /**
+   * And the core flow still runs with the optional credential absent. Unset it
+   * for the duration and confirm capture still reaches a saved note — this is
+   * the property that would actually break if enrichment quietly became a
+   * dependency.
+   */
+  it("captures and saves with the optional credential removed entirely", async () => {
+    const savedId = process.env.SPOTIFY_CLIENT_ID;
+    const savedSecret = process.env.SPOTIFY_CLIENT_SECRET;
+    delete process.env.SPOTIFY_CLIENT_ID;
+    delete process.env.SPOTIFY_CLIENT_SECRET;
+
+    try {
+      const user = await prisma.user.create({ data: { authSubject: `s_${crypto.randomUUID()}` } });
+      const capture = await captureFromSpotifyLink(
+        "https://open.spotify.com/track/4u43I0LP2Xf85OAS85eG0R",
+        {
+          fetchOEmbed: oembedUnavailable,
+          fallback: { title: "CN TOWER", artistDisplay: "PARTYNEXTDOOR & Drake" },
+        },
+      );
+
+      expect(capture.ok).toBe(true);
+      if (!capture.ok) return;
+
+      const note = await createNote(user.id, {
+        recordingId: capture.result.recording.id,
+        body: "written with no Spotify credential configured at all",
+      });
+      expect(note.visibility).toBe("private");
+    } finally {
+      if (savedId) process.env.SPOTIFY_CLIENT_ID = savedId;
+      if (savedSecret) process.env.SPOTIFY_CLIENT_SECRET = savedSecret;
     }
   });
 
