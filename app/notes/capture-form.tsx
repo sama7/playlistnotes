@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
+import Link from "next/link";
 import { captureAndCreateNote, type CaptureState } from "./actions";
 
 /**
@@ -20,13 +21,13 @@ export function CaptureForm() {
   return (
     <form action={formAction} className="capture">
       <div className="field">
-        <label htmlFor="link">Spotify track link</label>
+        <label htmlFor="link">Spotify link</label>
         <input
           id="link"
           name="link"
           type="text"
           inputMode="url"
-          placeholder="https://open.spotify.com/track/…"
+          placeholder="Track, album or playlist — paste any Spotify link"
           defaultValue={state.values?.link ?? ""}
           aria-describedby={state.error ? "capture-error" : undefined}
           required
@@ -34,14 +35,13 @@ export function CaptureForm() {
       </div>
 
       <div className="field">
-        <label htmlFor="body">Your note</label>
+        <label htmlFor="body">Your note <span className="note">(for a track)</span></label>
         <textarea
           id="body"
           name="body"
           rows={4}
           placeholder="What do you want to remember about this track?"
           defaultValue={state.values?.body ?? ""}
-          required
         />
       </div>
 
@@ -67,6 +67,15 @@ export function CaptureForm() {
         </p>
       </details>
 
+      {state.imported && (
+        <p role="status" className="success">
+          Imported <strong>{state.imported.name}</strong> — {state.imported.count} track
+          {state.imported.count === 1 ? "" : "s"}
+          {state.imported.matched > 0 && ` (${state.imported.matched} already in your library)`}.{" "}
+          <Link href="/collections">See your collections</Link>
+        </p>
+      )}
+
       {state.error && (
         // Asking for the artist is the normal path, not a failure: Spotify's
         // oEmbed has no artist field at all, so a first paste always lands
@@ -82,7 +91,7 @@ export function CaptureForm() {
       )}
 
       <button type="submit" disabled={pending}>
-        {pending ? "Saving…" : "Save note"}
+        {pending ? "Working…" : "Save"}
       </button>
     </form>
   );

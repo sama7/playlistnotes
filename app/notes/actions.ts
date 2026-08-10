@@ -3,6 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { requireUser } from "@/lib/auth";
 import { captureFromSpotifyLink } from "@/lib/music/capture";
+import { importFromSpotifyLink } from "@/lib/music/import-from-link";
+import { parseSpotifyLink } from "@/lib/music/spotify/parse-link";
 import {
   NoteNotFoundError,
   createNote,
@@ -26,6 +28,8 @@ import {
 
 export interface CaptureState {
   error?: string;
+  /** Set after a successful collection import, so the UI can celebrate it. */
+  imported?: { name: string; count: number; created: number; matched: number };
   /** Set when metadata could not be fetched and we need the user's help. */
   needsMetadata?: boolean;
   values?: { link: string; title: string; artistDisplay: string; body: string };
@@ -43,7 +47,29 @@ export async function captureAndCreateNote(
   const body = String(formData.get("body") ?? "").trim();
   const values = { link, title, artistDisplay, body };
 
-  if (!link) return { error: "Paste a Spotify track link to get started.", values };
+  if (!link) return { error: "Paste a Spotify link to get started.", values };
+
+  /**
+   * One box, three outcomes. An album or playlist link imports a collection
+   * and needs no note text; a track link writes a note. Routing on what was
+   * actually pasted beats making the user pick the right form first.
+   */
+  const kind = parseSpotifyLink(link).kind;
+  if (kind === "album" || kind === "playlist") {
+    const result = await importFromSpotifyLink(user.id, link);
+    if (!result.ok) return { error: result.message, values };
+    revalidatePath("/notes");
+    revalidatePath("/collections");
+    return {
+      imported: {
+        name: result.summary.name,
+        count: result.summary.imported,
+        created: result.summary.created,
+        matched: result.summary.matched,
+      },
+    };
+  }
+
   if (!body) return { error: "Write something about the track.", values };
 
   const capture = await captureFromSpotifyLink(link, {

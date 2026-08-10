@@ -229,3 +229,16 @@ details > * { margin-top: 0.6rem; }
   margin: 0;
   font-size: 0.9rem;
 }
+
+.success {
+  color: #16603a;
+  background: #dcf5e7;
+  border: 1px solid #16603a;
+  border-radius: 4px;
+  padding: 0.6rem 0.75rem;
+  margin: 0;
+  font-size: 0.9rem;
+}
+@media (prefers-color-scheme: dark) {
+  .success { background: #10301f; color: #7fe0b4; border-color: #2f8f63; }
+}
