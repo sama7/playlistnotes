@@ -230,7 +230,7 @@ The authenticated server session supplies `auth_subject`. Never accept the actin
 - `artist_display text not null` — the raw artist string exactly as the source gave it; **always populated**, never parsed into entities
 - `origin` enum: `provider`, `user` — the §3a.5 tiering
 - `normalized_key text not null` — lowercased, punctuation- and "feat."-stripped artist+title plus a duration bucket, computed on every write
-- `duration_ms integer`
+- `duration_ms integer` — **milliseconds, because that is what every provider sends.** Spotify returns `duration_ms`, Apple/iTunes returns `trackTimeMillis`, MusicBrainz returns `length` in ms; Deezer is the lone exception in seconds. Storing seconds would discard precision at the door for no gain: `INTEGER` holds both, display rounds anyway, and totalling a long collection from per-track seconds accumulates visible drift. Matching deliberately does **not** use the raw value — `normalized_key` buckets duration into five-second bands, because sub-second differences between pressings are noise. Keep the precision, round at the point of use.
 - `release_title text`
 - `release_date date`
 - `artwork_url text`
@@ -435,6 +435,29 @@ Suggested responsibilities:
 | Spotify library or private playlists | Unsupported in the rescue sprint | No `/me`, library, playlist OAuth scopes, or user token storage |
 
 Never implement user sharding across Client IDs, “bring your own Spotify credentials,” Web Player/Embed scraping, or browser automation as a way around Development Mode.
+
+### Verified provider capabilities — measured August 9–10, 2026
+
+Tested against the live APIs with an app token, **not inferred from documentation**. Re-test before relying on any row; provider behaviour is dated context, not a promise.
+
+| Input | Spotify, Client Credentials | Apple Music, public iTunes API |
+| --- | --- | --- |
+| Track | ✅ name, artists + artist IDs, album + album ID, duration, ISRC | ✅ name, artist, album, duration, track ID |
+| Album / EP / single | ✅ full ordered tracklist (21/21 verified) | ✅ full ordered tracklist (21/21 verified) |
+| **User-created public playlist** | ✅ **full tracklist** — verified on three, owned by three different people (4, 42 and 50 tracks) | ❌ needs a paid Apple developer token |
+| Spotify editorial playlist (`37i9…`) | ❌ **404** — withdrawn from Development Mode apps | n/a |
+| Private playlist | ❌ requires user OAuth | n/a |
+
+Two consequences worth stating plainly:
+
+- **The premise behind §4.4 was wrong.** That decision assumed Playlistnotes cannot read a playlist's tracks without user OAuth. It can, for user-created public playlists, because Client Credentials authenticates the *application* and no user is involved. What is genuinely unavailable is Spotify's own editorial playlists and anything private.
+- **Apple Music needs no paid account for metadata.** The public iTunes lookup/search API returns tracks and full album tracklists unauthenticated, at roughly 20 requests per minute. Only Apple Music *playlists* require the developer token.
+
+### `spotify.link` short links — cannot be resolved honestly
+
+Verified against a live link: `spotify.link` is Branch.io powered and sniffs the user agent. A curl-style agent receives a redirect to `open.spotify.com`; **every other agent**, including honest self-identifying ones, is handed to `spotify.app.link`, which answers `200` with an HTML interstitial. Three honest agent strings were tried; all were handed off.
+
+Resolving these therefore requires either impersonating a different client or scraping the interstitial. **Do neither.** The user is asked for the full track link instead — a small cost, and the format appears to have been retired for track sharing around November 2025 in favour of `open.spotify.com`.
 
 ### Spotify link adapter
 
