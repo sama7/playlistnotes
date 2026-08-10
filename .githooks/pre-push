@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+#
+# Refuse to push unless the verification suite passes.
+#
+# This exists because on 2026-08-10 a push went out with a failing test. The
+# cause was a shell chain that used ';' between steps, so a non-zero exit did
+# not stop the sequence. Remembering to use '&&' is not a control; a hook is.
+#
+# Enabled with:  git config core.hooksPath .githooks
+#
+# `next build` is deliberately not run here — CI builds on every push, and a
+# 30-second wait on each push trains people to reach for --no-verify.
+
+set -euo pipefail
+
+echo "pre-push: verifying before anything leaves this machine…"
+
+fail() {
+  echo ""
+  echo "✖ pre-push blocked: $1 failed."
+  echo "  Fix it, or use --no-verify only if you genuinely mean to push a known-broken tree."
+  exit 1
+}
+
+npm run typecheck --silent          || fail "typecheck"
+npm run lint --silent               || fail "lint"
+npm test --silent                   || fail "unit tests"
+npm run test:integration --silent   || fail "integration tests"
+
+echo "pre-push: all checks passed."

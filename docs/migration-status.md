@@ -2,10 +2,12 @@
 
 Durable handoff between sessions. Read this before relying on chat context. Update it after every phase and before ending a substantial session.
 
-**Last updated:** August 9, 2026
-**Current phase:** Phase 1 — foundation
+**Last updated:** August 10, 2026
+**Current phase:** Phase 2 complete; Phase 3 (collections) largely complete ahead of schedule
 **Checkpoint 1a: PASSED.** The schema review produced two corrections, both now merged — `album_artists` was built, and the `Provider` enum was cut back to authoritative sources.
-**Next milestone:** Clerk development instance and the lazy user upsert, then Managed PostgreSQL and the first gated deployment. Both blocked on account creation and provisioning approval.
+**Next milestone:** Apple Music capture, then Managed PostgreSQL and the first gated deployment.
+
+**Progress: roughly 55%.** Estimated 25–35 hours remain, or 10–14 working days at 2–3 h/day — the week of August 24. That is over the original 15-day estimate, because album and playlist import were not in the plan.
 
 ---
 
@@ -156,6 +158,48 @@ fallback while oEmbed has no artist field, so an empty first paste could never
 succeed. Every test supplied an artist and shared the blind spot. Fixed, with
 three regression tests.
 
+## The premise that turned out to be wrong — August 9–10
+
+`AGENTS.md` §4.4 held that a playlist link must create nothing, because Playlistnotes could not read a playlist's tracks without user OAuth. **That was never tested, and it was false.**
+
+Client Credentials authenticates the *application*, so the five-user Development Mode cap never engages. Measured against the live API:
+
+| Input | Result |
+| --- | --- |
+| Track | full metadata incl. artist IDs, album ID, ISRC |
+| Album / EP / single | full ordered tracklist (21/21) |
+| **User-created public playlist** | **full tracklist** — verified on three, owned by three different people (4, 42, 50 tracks) |
+| Spotify editorial (`37i9…`) | 404, withdrawn from Development Mode |
+| Private playlist | 404, genuinely needs user OAuth |
+
+Samah questioned the premise twice before it was tested. The result is the largest feature in the product: **paste a track, album, EP, single or public playlist — from a full or short link — and it lands correctly, with no OAuth anywhere.** That restores what v1 actually did, which is what makes the name true again.
+
+CSV import is now the *fallback* for the two cases that genuinely fail, not the primary path.
+
+### Verified end to end in a real browser — August 10
+
+Samah's own playlist, pasted into the live app:
+
+```
+aug23 | 1 | Dedicada a ela    | Arthur Verocai
+aug23 | 2 | Na boca do sol    | Arthur Verocai
+aug23 | 3 | Orris Root Powder | MF DOOM
+aug23 | 4 | Nardis            | Bill Evans Trio
+```
+
+Every artist linked from its Spotify ID, order preserved, snapshot recorded.
+
+### Bugs found only by using it, not by testing it
+
+- **The happy path was unreachable.** `artistDisplay` came solely from the user's fallback while oEmbed has no artist field, so an empty first paste could never succeed. Every test supplied an artist and shared the blind spot.
+- **A repeat paste hit the network.** oEmbed was called before the database was consulted. Now reversed, with a test that counts provider calls.
+- **A timezone bug** filed session-lapse events under the previous day west of UTC.
+
+### Process corrections — August 10
+
+- **`.githooks/pre-push`** runs typecheck, lint, unit and integration tests and blocks the push on failure. Enable per clone with `git config core.hooksPath .githooks`. It exists because a push went out with a failing test after a shell chain used `;` instead of `&&`. Proven to fail closed.
+- **No `Co-Authored-By` trailers.** Commits name Samah alone; the history was rewritten to remove 26 of them.
+
 ### Still to do in Phase 2
 
 Playwright happy path and privacy path. Clerk needs testing tokens for automated sign-in, so this is the one part that needs setup rather than just writing.
@@ -165,6 +209,8 @@ Playwright happy path and privacy path. Clerk needs testing tokens for automated
 | Blocked item | Needs |
 | --- | --- |
 | Sanitized migration export | Only needed when legacy import is promoted into scope (post-core). `notes` in full plus `users` projected to `{user, lastModified}`. |
+| **Managed PostgreSQL** | Needs a DigitalOcean database, ~$15–24/mo. The last thing blocking a deployment. |
+| **Apple Music playlists** | Release blocker. Needs an Apple Developer account (~$99/yr); tracks and albums need nothing. |
 | v1 screenshots | A browser session |
 | Push `v2`; branch protection on `main`; tag `v1-final` | Explicit approval — the only remote is `github` and `main` auto-deploys |
 | Clerk / Sentry / PostHog | Accounts to be created |
