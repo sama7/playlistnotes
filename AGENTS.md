@@ -122,7 +122,9 @@ The honest risk in v2 is not schema design; it is drifting into catalog maintena
 
    **Rate limits are survivable only because of ordering.** Spotify's limit is per app over a rolling 30-second window and is lower in Development Mode. The capture flow therefore consults the database **before** any provider call, so a known track resolves with zero network calls and request volume tracks catalog growth rather than usage. `tests/integration/no-network-on-known-track.test.ts` asserts the call count directly; do not reintroduce a lookup above that check.
 
-   Use a **separate Spotify application for v2**, so v1's can be deleted at retirement without breaking v2.
+   **Reuse the existing Playlistnotes Spotify application** (client id `267de355b91648638b917d32faa7e23b`). A second app was considered and rejected: it is the same product, Client Credentials needs no redirect URI and no user list, and **all Development Mode apps under one developer account share a single quota**, so a second registration buys nothing. Keep the secret in `.env.local`.
+
+   Decommissioning the Heroku *deployment* at cutover does not affect the Spotify *application* — the registration and its credentials keep working, so v2's metadata lookups survive v1's retirement untouched.
 
 Enrichment across MusicBrainz, Last.fm, Apple Music, Tidal, and Wikipedia is explicitly **post-retention-signal**. Entity tables now because they are cheap and correct; enrichment only after someone returns to write a second note.
 

@@ -1,5 +1,6 @@
 import { Provider } from "@prisma/client";
-import { parseSpotifyLink } from "@/lib/music/spotify/parse-link";
+import { parseSpotifyLink, type SpotifyRef } from "@/lib/music/spotify/parse-link";
+import { resolveSpotifyShortLink } from "@/lib/music/spotify/resolve-short-link";
 import { fetchSpotifyOEmbed } from "@/lib/music/spotify/oembed";
 import {
   createUserAuthoredRecording,
@@ -58,9 +59,26 @@ export async function captureFromSpotifyLink(
      *  over an existing shared recording. */
     fallback?: { title: string; artistDisplay: string };
     fetchOEmbed?: typeof fetchSpotifyOEmbed;
+    resolveShortLink?: typeof resolveSpotifyShortLink;
   } = {},
 ): Promise<CaptureOutcome> {
-  const ref = parseSpotifyLink(input);
+  let ref: SpotifyRef = parseSpotifyLink(input);
+
+  // A short link is resolved through the bounded, allowlisted walk in
+  // resolve-short-link.ts, then treated exactly like a pasted canonical URL —
+  // including being refused if it turns out to point at a playlist.
+  if (ref.kind === "short-link") {
+    const resolved = await (options.resolveShortLink ?? resolveSpotifyShortLink)(input);
+    if (!resolved.ok) {
+      return {
+        ok: false,
+        reason: "short-link",
+        message:
+          "We couldn't follow that short Spotify link. Open it in Spotify and copy the full track link.",
+      };
+    }
+    ref = resolved.ref;
+  }
 
   switch (ref.kind) {
     case "playlist":
@@ -75,11 +93,11 @@ export async function captureFromSpotifyLink(
       };
 
     case "short-link":
+      // Unreachable: resolved above before the switch.
       return {
         ok: false,
         reason: "short-link",
-        message:
-          "Short Spotify links aren't supported yet — open it in Spotify and copy the full track link.",
+        message: "We couldn't follow that short Spotify link.",
       };
 
     case "unsupported":

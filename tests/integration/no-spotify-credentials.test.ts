@@ -1,6 +1,7 @@
 import { PrismaClient } from "@prisma/client";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { captureFromSpotifyLink } from "@/lib/music/capture";
+import { parseSpotifyLink } from "@/lib/music/spotify/parse-link";
 import { createNote, listNotes } from "@/lib/notes/service";
 
 const prisma = new PrismaClient();
@@ -199,5 +200,50 @@ describe("first paste with empty fields — the flow a real user actually takes"
     });
 
     expect(await prisma.recording.count()).toBe(0);
+  });
+});
+
+describe("short links resolve to the track they point at", () => {
+  const shortLinkTo = (target: string) =>
+    (async () => ({ ok: true as const, ref: parseSpotifyLink(target) }));
+
+  it("captures through a spotify.link short link", async () => {
+    const capture = await captureFromSpotifyLink("https://spotify.link/aBcDeFg", {
+      resolveShortLink: shortLinkTo(
+        "https://open.spotify.com/track/4u43I0LP2Xf85OAS85eG0R",
+      ) as never,
+      fetchOEmbed: oembedUnavailable,
+      fallback: { title: "CN TOWER", artistDisplay: "PARTYNEXTDOOR & Drake" },
+    });
+
+    expect(capture.ok).toBe(true);
+    if (!capture.ok) return;
+    expect(capture.result.recording.title).toBe("CN TOWER");
+  });
+
+  /** A short link is not a loophole: it is refused for exactly the same reason
+   *  a pasted playlist URL is. */
+  it("still refuses a short link that points at a playlist", async () => {
+    const capture = await captureFromSpotifyLink("https://spotify.link/aBcDeFg", {
+      resolveShortLink: shortLinkTo(
+        "https://open.spotify.com/playlist/37i9dQZF1DX4WYpdgoIcn6",
+      ) as never,
+      fetchOEmbed: oembedUnavailable,
+    });
+
+    expect(capture).toMatchObject({ ok: false, reason: "playlist" });
+    expect(await prisma.collection.count()).toBe(0);
+    expect(await prisma.recording.count()).toBe(0);
+  });
+
+  it("explains rather than failing silently when resolution fails", async () => {
+    const capture = await captureFromSpotifyLink("https://spotify.link/dead", {
+      resolveShortLink: (async () => ({ ok: false as const, reason: "unreachable" as const })) as never,
+      fetchOEmbed: oembedUnavailable,
+    });
+
+    expect(capture).toMatchObject({ ok: false, reason: "short-link" });
+    if (capture.ok) return;
+    expect(capture.message).toMatch(/copy the full track link/i);
   });
 });
