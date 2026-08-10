@@ -749,6 +749,18 @@ When background enrichment becomes meaningful, use a durable job mechanism and e
 
 When asked to add a non-goal during the sprint, record it in the backlog and explain which locked outcome would be displaced.
 
+### Before the first public v2 release — do not ship without these
+
+Agreed August 10, 2026. These are release blockers, not backlog.
+
+| Item | Notes |
+| --- | --- |
+| **Apple Music track / single / EP / album import** | Metadata via the public iTunes API, no paid account required — verified enumerating a 21-track album unauthenticated. Link parsing plus lookup. |
+| **Apple Music playlist import** | The one Apple capability that *does* need a paid Apple Developer account (~$99/yr) and a signed developer token. Samah will set this up toward the end of the sprint. |
+| Playwright happy path and privacy path | Needs Clerk testing tokens configured in the dashboard. |
+
+The point of shipping Apple Music alongside Spotify is not feature count: it is that **two independent providers, neither load-bearing, is the demonstration** that Playlistnotes is no longer a Spotify client. One provider is an integration; two is an architecture.
+
 ### Recorded backlog — deferred, not abandoned
 
 These are wanted, and the schema is deliberately built to accommodate them. Recording them keeps them out of the sprint without losing them.
@@ -759,7 +771,8 @@ These are wanted, and the schema is deliberately built to accommodate them. Reco
 | **Collaborative collections** | `collection_members` (role, invite flow) and a decision on snapshot ownership under multiple editors | `collections.owner_id` remains valid as creator/owner; membership is purely additive |
 | **Album pages** | `album_artists` join table | Pure backfill from `Album Artist URI(s)` retained in `source_metadata` |
 | **User-authored recordings joining global dedup** | Convergence threshold, promotion rules, a moderation touch | `origin`; `normalized_key` written from day one; identifier acquisition already promotes automatically |
-| **Cross-provider enrichment** (MusicBrainz, Last.fm, Apple Music, Tidal, Wikipedia) | Async jobs, rate limiting, provider terms review | Adapter interface; `recording_external_ids`; ISRC captured at import |
+| **Import from every major streaming service** — Tidal, Amazon Music, Qobuz, YouTube Music, Deezer | Per-provider auth and link formats; each is additive behind the existing adapter interface | Provider enum, external-ID tables keyed on `(provider, provider_id)`, ISRC as the cross-provider join |
+| **Cross-provider enrichment** (MusicBrainz, Last.fm, Wikipedia) | Async jobs, rate limiting, provider terms review | Adapter interface; `recording_external_ids`; ISRC captured at import |
 | **LLM-assisted resolution** | Only for the `needs_review` residue, only once that queue is non-trivial | Provenance recorded on every resolution decision |
 
 The §3a.3 sequencing rule applies to all of them: the release that first shows one recording to many users carries the merge and moderation tooling with it.

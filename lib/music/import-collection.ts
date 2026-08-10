@@ -183,7 +183,8 @@ export async function importCollection(
 
       for (const track of data.tracks) {
         const resolved = await resolveTrack(tx, track);
-        resolved.wasCreated ? created++ : matched++;
+        if (resolved.wasCreated) created++;
+        else matched++;
         recordingIds.push(resolved.recordingId);
       }
 
