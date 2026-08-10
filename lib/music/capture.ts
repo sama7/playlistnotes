@@ -3,6 +3,7 @@ import { parseSpotifyLink } from "@/lib/music/spotify/parse-link";
 import { fetchSpotifyOEmbed } from "@/lib/music/spotify/oembed";
 import {
   createUserAuthoredRecording,
+  findByProviderId,
   resolveByProviderId,
   type ResolutionResult,
 } from "@/lib/music/resolve-recording";
@@ -16,7 +17,13 @@ import {
  */
 
 export type CaptureOutcome =
-  | { ok: true; result: ResolutionResult; metadataAvailable: boolean }
+  | {
+      ok: true;
+      result: ResolutionResult;
+      metadataAvailable: boolean;
+      /** Where the metadata came from. "database" means no provider was contacted. */
+      source: "database" | "provider" | "manual";
+    }
   | {
       ok: false;
       reason: CaptureRefusal;
@@ -86,6 +93,27 @@ export async function captureFromSpotifyLink(
       break;
   }
 
+  /**
+   * DATABASE FIRST. This ordering is the rate-limit guarantee, and it is load
+   * bearing: a track we have already seen resolves with **zero network calls**,
+   * however many people paste it. Provider requests are therefore proportional
+   * to how fast the catalog grows, not to how much the product is used — a far
+   * flatter curve, and the reason a shared Development Mode quota is survivable.
+   *
+   * `no-network-on-known-track.test.ts` asserts the call count directly, so
+   * reintroducing a lookup above this line fails the suite rather than quietly
+   * costing us quota.
+   */
+  const known = await findByProviderId(Provider.spotify, ref.id);
+  if (known) {
+    return {
+      ok: true,
+      result: { recording: known, strategy: "provider-id", decision: "matched" },
+      metadataAvailable: true,
+      source: "database",
+    };
+  }
+
   const oembed = await (options.fetchOEmbed ?? fetchSpotifyOEmbed)("track", ref.id);
 
   /**
@@ -122,7 +150,12 @@ export async function captureFromSpotifyLink(
     artistDisplay,
   });
 
-  return { ok: true, result, metadataAvailable: oembed !== null };
+  return {
+    ok: true,
+    result,
+    metadataAvailable: oembed !== null,
+    source: oembed !== null ? "provider" : "manual",
+  };
 }
 
 export { createUserAuthoredRecording };

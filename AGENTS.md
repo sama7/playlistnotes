@@ -108,6 +108,22 @@ The honest risk in v2 is not schema design; it is drifting into catalog maintena
 
    **Safety rule: never auto-promote a single user's free text into a shared public entity.** User-supplied titles are arbitrary strings that may contain garbage, personal information, or abuse. Promotion happens via (a), or via (b) above a threshold — never from one person's typing.
 
+7. **Provider-anchored capture is the strongly preferred path, and never the required one.** A pasted track link should be the obvious default in the UI, because it is easier for the user *and* because it is the only capture that populates shared entities — one link yields title, artist, album, artist IDs, album ID and ISRC, filling `artists`, `albums`, `recording_artists` and `album_artists` automatically. Every linked capture improves the library for everyone.
+
+   Say why, rather than walling off the alternative: linked tracks gain artwork, future artist pages, and shareability. Manual entry must remain available, or the product stops being a journal — it has to hold the mp3 a friend sent, the bootleg, the unreleased demo. Align the easy path with the valuable one; do not coerce.
+
+   The flywheel does not change §3a.3: building toward a shared library is free, but the release that first shows one recording to many users is the release that carries merge tooling and UGC moderation.
+
+8. **Spotify metadata may be fetched with Client Credentials, and this does not breach §1.** Verified August 9, 2026 against the live API: an app token from `client_id` + `client_secret` returns full track metadata including artist IDs, album ID, duration and ISRC. **No user is authenticated in this flow, so the five-user Development Mode cap does not apply** — that cap counts authorized *users*, and Client Credentials has none.
+
+   This is an **optional enrichment**, never a dependency. With credentials configured, a paste needs no typing. Without them, the flow degrades to oEmbed's title plus a user-supplied artist. §1's invariant is unchanged and its test remains: the core suite passes with no Spotify configuration at all.
+
+   The bright lines still hold — no "Connect Spotify" step, no `/me`, no user token storage, no OAuth callback.
+
+   **Rate limits are survivable only because of ordering.** Spotify's limit is per app over a rolling 30-second window and is lower in Development Mode. The capture flow therefore consults the database **before** any provider call, so a known track resolves with zero network calls and request volume tracks catalog growth rather than usage. `tests/integration/no-network-on-known-track.test.ts` asserts the call count directly; do not reintroduce a lookup above that check.
+
+   Use a **separate Spotify application for v2**, so v1's can be deleted at retirement without breaking v2.
+
 Enrichment across MusicBrainz, Last.fm, Apple Music, Tidal, and Wikipedia is explicitly **post-retention-signal**. Entity tables now because they are cheap and correct; enrichment only after someone returns to write a second note.
 
 ## 4. Locked product decisions
@@ -532,7 +548,8 @@ The sprint is a timebox, not a promise to include every desirable feature. Prefe
 
 - **Leave v1 running and writable.** Do not put it into maintenance mode and do not rebuild it: it pins Node `18.12.1`, which is EOL and unsupported on Heroku, so a rebuild may fail. Its unauthenticated note endpoints are a known, accepted, time-boxed exposure; freeze the code, do not publish endpoint details, and close the hole at cutover.
 - Take the two backup artifacts described in §3 (DR backup run by the user; sanitized export for migration work). Record the checksum and source counts — expect 34 users and 33 notes.
-- **Plan** removal of stored Spotify tokens and rotation of the Spotify client secret; **execute only at retirement.** Rotating earlier breaks live v1, which still reads `CLIENT_SECRET` and refreshes tokens. The report's "rotate before public invitation" wording is superseded.
+- **Do not rotate the v1 Spotify client secret.** This corrects earlier guidance in this file. Investigated August 9, 2026: the secret was **never committed on any ref**, and v1 logs `access_token` and `refresh_token` (`routes/authorize.js:111,114,177,178`) but never the secret. There is no exposure, and rotation is a response to compromise. Rotating early breaks live v1; rotating at retirement is redundant because decommissioning the Heroku app removes the config var anyway. If a clean sweep is wanted, deleting the Spotify application is strictly stronger than rotating its secret — but note that permanently destroys the 20 grandfathered users.
+- **The real v1 exposure is the user refresh tokens in Heroku's log stream**, which rotating the client secret would never have fixed. Decommissioning the Heroku app is what closes it.
 - Record the v1 behavior with screenshots and a short architecture note.
 - Reconcile this file and `CLAUDE.md` with the current decisions and commit them **before** any application code.
 - Confirm that legacy-note import remains post-core unless the user explicitly changes its priority.

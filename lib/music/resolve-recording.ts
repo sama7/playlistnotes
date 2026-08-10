@@ -39,6 +39,25 @@ async function followMerges(recording: Recording): Promise<Recording> {
   return current;
 }
 
+/**
+ * Look up an already-known recording. Never creates, never calls a provider.
+ *
+ * This exists as its own function so the capture flow can consult the database
+ * BEFORE deciding whether a network call is needed. Keeping it separate makes
+ * the ordering hard to reverse by accident — the expensive path has to be
+ * chosen explicitly.
+ */
+export async function findByProviderId(
+  provider: Provider,
+  providerId: string,
+): Promise<Recording | null> {
+  const mapping = await prisma.recordingExternalId.findUnique({
+    where: { provider_providerId: { provider, providerId } },
+    include: { recording: true },
+  });
+  return mapping ? followMerges(mapping.recording) : null;
+}
+
 export interface CaptureInput {
   provider: Provider;
   providerId: string;
