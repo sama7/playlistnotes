@@ -54,8 +54,7 @@ The current v1 implementation is a small JavaScript/Express/Create React App app
 Known issues:
 
 - Spotify identity is treated as Playlistnotes identity.
-- Note routes trust `user`, `playlist`, and `track` values supplied by the browser.
-- Note reads, updates, and deletes do not enforce an authenticated owner on the server.
+- Note routes derive the acting owner from client-supplied values rather than a verified session, so reads and mutations are not owner-scoped. Specifics are omitted: this repository is public and v1 is still serving.
 - Spotify access and refresh tokens are stored and logged.
 - One mutable Spotify API client is shared across requests, which is unsafe under concurrent users.
 - Notes are keyed to Spotify playlist and track identifiers, preventing provider independence.
@@ -709,7 +708,7 @@ Every feature must include:
 
 Initial deployment — concrete facts for this environment:
 
-- The droplet is **1 vCPU / 2 GB RAM / 50 GB disk** in NYC1, and **already runs MKDb**: pm2 processes `server` and `mankbot`, nginx proxying to Node on **`localhost:3000`**, PostgreSQL 16 local over a UNIX socket, Let's Encrypt TLS, and a weekly crontab. **Never modify MKDb's process, nginx ownership, database, role, files, or cron.**
+- The droplet (address in the DigitalOcean console, deliberately not recorded in this public repo) is **1 vCPU / 2 GB RAM / 50 GB disk** in NYC1, and **already runs MKDb**: pm2 processes `server` and `mankbot`, nginx proxying to Node on **`localhost:3000`**, PostgreSQL 16 local over a UNIX socket, Let's Encrypt TLS, and a weekly crontab. **Never modify MKDb's process, nginx ownership, database, role, files, or cron.**
 - **GitHub Actions builds; the droplet only runs.** Use Next.js `output: 'standalone'` and rsync `.next/standalone`, `.next/static`, and `public`. A `next build` spike alongside MKDb and its local PostgreSQL risks the OOM killer taking out MKDb's database. Set Prisma `binaryTargets = ["native", "debian-openssl-3.0.x"]` so the CI-built query engine runs on Ubuntu.
 - Playlistnotes binds **`127.0.0.1:3001`** under its own pm2 process named `playlistnotes`, with its own nginx virtual host and certificate.
 - Copy MKDb's proven proxy configuration: forward `X-Real-IP`, `X-Forwarded-For`, and `X-Forwarded-Proto`, and set `trust proxy` to one hop, or rate limiting will see every request as `127.0.0.1`.

@@ -111,6 +111,20 @@ jobs:
 
       # Build here, not on the droplet: a `next build` spike alongside MKDb and
       # its local PostgreSQL on a 2 GB box risks the OOM killer.
+      # NEXT_PUBLIC_* values are INLINED INTO THE BUNDLE at build time, so the
+      # artifact CI produces carries whichever Clerk instance this key belongs
+      # to. A placeholder would build green and then point production at the
+      # wrong instance, so the build fails loudly instead.
+      - name: Require the Clerk publishable key
+        run: |
+          if [ -z "${{ vars.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}" ]; then
+            echo "::error::Repository variable NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY is not set."
+            echo "Add it at: Settings → Secrets and variables → Actions → Variables → New repository variable"
+            echo "It is a PUBLIC value (pk_test_… / pk_live_…), so it belongs in Variables, not Secrets."
+            echo "Use the development key for now; swap it for the production key before the first real deploy."
+            exit 1
+          fi
+
       - name: Build standalone artifact
         run: npm run build
         env:

@@ -35,7 +35,7 @@ Durable handoff between sessions. Read this before relying on chat context. Upda
 | Heroku app | `playlistnotes` |
 | Heroku deploys | **Automatic deploys from `main` are ENABLED** — confirmed by the user, not inferred |
 | DNS | GoDaddy, records currently configured for Heroku |
-| Droplet | `root@68.183.29.69`, 1 vCPU / 2 GB RAM / 50 GB disk, NYC1, $12/mo (resized Aug 7 from 1 GB) |
+| Droplet | 1 vCPU / 2 GB RAM / 50 GB disk, NYC1, $12/mo (resized Aug 7 from 1 GB). Address kept out of this public repo; it is in the DigitalOcean console. |
 | Droplet co-tenant | **MKDb** — pm2 `server` + `mankbot`, nginx → Node on `localhost:3000`, local PostgreSQL 16 over UNIX socket, Let's Encrypt, weekly crontab. **Never modify any of it.** |
 | Playlistnotes port | `127.0.0.1:3001`, pm2 process `playlistnotes`, own nginx vhost and certificate |
 | Legacy data | 34 user documents, 33 notes, nothing written since 2024 |
@@ -53,7 +53,7 @@ Durable handoff between sessions. Read this before relying on chat context. Upda
 
 ### Known v1 defects (do not patch; replaced by v2)
 
-1. **No server-side authorization on any note endpoint** — `routes/note.js` takes `user` from the query string. Anyone supplying a Spotify user ID can read, overwrite, or delete that user's notes. Spotify user IDs appear in public profile URLs, so this is not bounded by the five-user cap. **Known, accepted, time-boxed; closed at cutover.**
+1. **No server-side authorization on the note endpoints** — the acting owner is taken from client input rather than a verified session, so note reads and mutations are not owner-scoped. The exposure is **not** bounded by the five-user Spotify cap. Details are deliberately omitted here because this repository is public and v1 is still live; **known, accepted, time-boxed, and closed at cutover.**
 2. Access and refresh tokens are `console.log`'d — `routes/authorize.js:111,115,177,178`. Live tokens are in Heroku's log stream.
 3. One module-level mutable Spotify client shared across requests — `routes/authorize.js:34`. `setAccessToken` races under concurrency.
 4. The 429 handler can leave `retryIntervalID` set permanently, hard-failing every route.
