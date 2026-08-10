@@ -18,13 +18,36 @@ import { parseSpotifyLink, type SpotifyRef } from "./parse-link";
  * would let the redirect chain smuggle the real target past us.
  */
 
-/** Hosts a short link is permitted to point at, at any hop. */
+/**
+ * Hosts a short link is permitted to point at, at any hop.
+ *
+ * `spotify.app.link` is Spotify's Branch.io deep-link domain and a legitimate
+ * intermediate hop — see the note below on why it is often the destination.
+ */
 const ALLOWED_HOPS = new Set([
   "spotify.link",
   "spoti.fi",
+  "spotify.app.link",
   "open.spotify.com",
   "play.spotify.com",
 ]);
+
+/**
+ * Identify ourselves honestly.
+ *
+ * Verified 2026-08-09 against a real short link: `spotify.link` is Branch.io
+ * powered and **sniffs the user agent**. A curl-style agent receives a direct
+ * redirect to `open.spotify.com`; every other agent is handed to
+ * `spotify.app.link`, which answers 200 with an HTML interstitial whose target
+ * is only recoverable by executing or scraping the page.
+ *
+ * We do not spoof a different client to get the better answer, and we do not
+ * scrape the interstitial — AGENTS.md rules out browser automation and page
+ * scraping as routes around a provider boundary, and a spoofed agent would
+ * break the moment Branch changed its detection anyway. When the walk cannot
+ * reach a canonical URL honestly, the caller asks the user for the full link.
+ */
+const USER_AGENT = "Playlistnotes/2.0 (+https://playlistnotes.io)";
 
 const MAX_HOPS = 4;
 const TIMEOUT_MS = 4_000;
@@ -56,6 +79,7 @@ export async function resolveSpotifyShortLink(
 
       const response = await doFetch(current.toString(), {
         method: "HEAD",
+        headers: { "user-agent": USER_AGENT },
         // Inspected by us, never followed by the runtime — that is the whole
         // point of this function.
         redirect: "manual",

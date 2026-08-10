@@ -72,15 +72,29 @@ jobs:
 
       # The core acceptance path must pass with NO Spotify configuration at all.
       # v2 uses no Spotify OAuth; this guards against a dependency creeping in.
-      - name: Assert no Spotify credentials are required
+      # Spotify metadata via Client Credentials is optional enrichment, so a
+      # reference to SPOTIFY_CLIENT_SECRET is now legitimate. What must never
+      # appear is USER OAuth: tokens, refresh tokens, or a callback. Those are
+      # what the five-user cap counts, and v2 has none of them.
+      - name: Assert no Spotify user-OAuth surface exists
         run: |
-          if grep -rniE 'SPOTIFY_(CLIENT_SECRET|CLIENT_ID|ACCESS_TOKEN|REFRESH_TOKEN)' \
+          if grep -rniE 'SPOTIFY_(ACCESS_TOKEN|REFRESH_TOKEN|REDIRECT_URI)|authorizationCodeGrant|/api/spotify/callback' \
               --include='*.ts' --include='*.tsx' --include='*.json' \
               --exclude-dir=node_modules . ; then
-            echo "::error::Spotify OAuth credentials referenced in source."
+            echo "::error::Spotify user-OAuth surface referenced in source."
             exit 1
           fi
-          echo "No Spotify credential references found."
+          echo "No Spotify user-OAuth surface found."
+
+      # The core independence invariant: the suite passes with the optional
+      # credential absent. CI never sets it, so this is enforced by omission.
+      - name: Assert the core suite runs with no Spotify credential
+        run: |
+          if [ -n "${SPOTIFY_CLIENT_SECRET:-}" ]; then
+            echo "::error::CI must not configure SPOTIFY_CLIENT_SECRET."
+            exit 1
+          fi
+          echo "No Spotify credential configured in CI, as intended."
 
   build:
     runs-on: ubuntu-latest
