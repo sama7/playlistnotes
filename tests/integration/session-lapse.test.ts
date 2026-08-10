@@ -1,15 +1,15 @@
 import { PrismaClient } from "@prisma/client";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { epochDay, recordSessionLapse, utcDateString } from "@/lib/session-lapse";
+import { resetDatabase } from "./reset";
 
 const prisma = new PrismaClient();
 
 beforeEach(async () => {
-  await prisma.authLapse.deleteMany();
+  await resetDatabase(prisma);
 });
 
 afterAll(async () => {
-  await prisma.authLapse.deleteMany();
   await prisma.$disconnect();
 });
 

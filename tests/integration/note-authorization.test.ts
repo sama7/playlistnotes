@@ -14,6 +14,7 @@ import {
   updateNote,
 } from "@/lib/notes/service";
 import { resolveByProviderId } from "@/lib/music/resolve-recording";
+import { resetDatabase } from "./reset";
 
 const prisma = new PrismaClient();
 
@@ -50,12 +51,7 @@ async function scenario() {
 }
 
 beforeEach(async () => {
-  await prisma.note.deleteMany();
-  await prisma.collectionItem.deleteMany();
-  await prisma.collection.deleteMany();
-  await prisma.recordingExternalId.deleteMany();
-  await prisma.recording.deleteMany();
-  await prisma.user.deleteMany();
+  await resetDatabase(prisma);
 });
 
 afterAll(async () => {

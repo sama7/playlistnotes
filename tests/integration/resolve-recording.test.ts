@@ -1,6 +1,7 @@
 import { PrismaClient, Provider, RecordingOrigin } from "@prisma/client";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { createUserAuthoredRecording, resolveByProviderId } from "@/lib/music/resolve-recording";
+import { resetDatabase } from "./reset";
 
 const prisma = new PrismaClient();
 
@@ -14,10 +15,7 @@ const CN_TOWER = {
 };
 
 beforeEach(async () => {
-  await prisma.note.deleteMany();
-  await prisma.recordingExternalId.deleteMany();
-  await prisma.recording.deleteMany();
-  await prisma.user.deleteMany();
+  await resetDatabase(prisma);
 });
 
 afterAll(async () => {

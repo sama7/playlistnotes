@@ -1,6 +1,7 @@
 import { PrismaClient } from "@prisma/client";
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { captureFromSpotifyLink } from "@/lib/music/capture";
+import { resetDatabase } from "./reset";
 
 const prisma = new PrismaClient();
 
@@ -26,9 +27,7 @@ const metadata = {
 };
 
 beforeEach(async () => {
-  await prisma.note.deleteMany();
-  await prisma.recordingExternalId.deleteMany();
-  await prisma.recording.deleteMany();
+  await resetDatabase(prisma);
 });
 
 afterAll(async () => {

@@ -1,15 +1,15 @@
 import { PrismaClient } from "@prisma/client";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { resolveLocalUser } from "@/lib/auth";
+import { resetDatabase } from "./reset";
 
 const prisma = new PrismaClient();
 
 beforeEach(async () => {
-  await prisma.user.deleteMany();
+  await resetDatabase(prisma);
 });
 
 afterAll(async () => {
-  await prisma.user.deleteMany();
   await prisma.$disconnect();
 });
 

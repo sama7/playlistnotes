@@ -3,6 +3,7 @@ import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { captureFromSpotifyLink } from "@/lib/music/capture";
 import { parseSpotifyLink } from "@/lib/music/spotify/parse-link";
 import { createNote, listNotes } from "@/lib/notes/service";
+import { resetDatabase } from "./reset";
 
 const prisma = new PrismaClient();
 
@@ -21,10 +22,7 @@ const prisma = new PrismaClient();
 const oembedUnavailable = async () => null;
 
 beforeEach(async () => {
-  await prisma.note.deleteMany();
-  await prisma.recordingExternalId.deleteMany();
-  await prisma.recording.deleteMany();
-  await prisma.user.deleteMany();
+  await resetDatabase(prisma);
 });
 
 afterAll(async () => {
