@@ -440,7 +440,39 @@ holding no other copy, decrypted, and restored — probe row present, 17 tables.
 Sentry/PostHog (credentials-gated and only useful with traffic), artist and album
 pages, Last.fm, and cutover of the apex domain. All recorded in `AGENTS.md` §16.
 
-### Everything the user was blocked on is now closed
+### The SuperTokens migration needs a decision first
+
+Two things should be settled before the 3–5 hours are spent, and both are the
+owner's call rather than an implementation detail.
+
+**1. Where does the SuperTokens core run?** SuperTokens is not a library — it is
+an SDK plus a **separate core service**, and the core is a JVM process.
+
+- *Managed (their SaaS, free tier):* nothing new on the droplet. Costs an
+  external dependency and an account.
+- *Self-hosted on the droplet:* measured on 2026-08-11 the box has **1.1 GiB
+  available** of 1.9 GiB, with no swap pressure but no Docker and no Java
+  installed. A Docker daemon plus a JVM core is realistically 350–500 MB, and
+  MKDb's weekly sync spikes on the same box. That is the one risk the contract
+  says never to take.
+
+**Recommendation: managed.** Self-hosting to avoid a dependency, at the price of
+putting MKDb's database within reach of the OOM killer, is the wrong trade for a
+product with no users yet.
+
+**2. Is the migration necessary at all?** The reason recorded for leaving Clerk
+is a 7-day non-sliding session plus passkeys. Both of those appear to be
+configurable in Clerk — session lifetime and inactivity timeout are settings, and
+Clerk supports passkeys. Worth confirming in the dashboard before spending the
+time: if Clerk can do it, the migration buys an avoided vendor and little else,
+and that is a different trade than the one originally made.
+
+Nothing else in the remaining work depends on the answer. `users.auth_subject` is
+deliberately opaque and every owner-scoped query derives its user from it, so
+whichever provider wins, the blast radius is `lib/auth.ts`, `proxy.ts`, and the
+sign-in/up routes.
+
+### Everything else the user was blocked on is now closed
 
 - Backup passphrase copied to the password manager — done.
 - rclone Drive remote authorised, uploads verified, round-trip restore rehearsed.
