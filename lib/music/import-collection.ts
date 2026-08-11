@@ -1,7 +1,11 @@
 import { Prisma, Provider, RecordingOrigin } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { normalizedKey } from "@/lib/music/normalize";
-import type { SpotifyArtistRef, SpotifyCollectionData, SpotifyTrackData } from "./spotify/web-api";
+import type {
+  ImportableArtist,
+  ImportableCollection,
+  ImportableTrack,
+} from "./importable";
 
 /**
  * Turning a Spotify album or public playlist into a Playlistnotes collection.
@@ -31,9 +35,13 @@ export interface ImportSummary {
 }
 
 /** Upsert an artist by provider ID. Never creates from a name. */
-async function resolveArtist(tx: Prisma.TransactionClient, ref: SpotifyArtistRef): Promise<string> {
+async function resolveArtist(
+  tx: Prisma.TransactionClient,
+  provider: Provider,
+  ref: ImportableArtist,
+): Promise<string> {
   const existing = await tx.artistExternalId.findUnique({
-    where: { provider_providerId: { provider: Provider.spotify, providerId: ref.id } },
+    where: { provider_providerId: { provider, providerId: ref.providerId } },
     select: { artistId: true },
   });
   if (existing) return existing.artistId;
@@ -43,11 +51,7 @@ async function resolveArtist(tx: Prisma.TransactionClient, ref: SpotifyArtistRef
       name: ref.name,
       sortName: ref.name,
       externalIds: {
-        create: {
-          provider: Provider.spotify,
-          providerId: ref.id,
-          providerUrl: `https://open.spotify.com/artist/${ref.id}`,
-        },
+        create: { provider, providerId: ref.providerId },
       },
     },
   });
@@ -56,15 +60,16 @@ async function resolveArtist(tx: Prisma.TransactionClient, ref: SpotifyArtistRef
 
 async function resolveAlbum(
   tx: Prisma.TransactionClient,
-  album: NonNullable<SpotifyTrackData["album"]>,
+  provider: Provider,
+  album: NonNullable<ImportableTrack["album"]>,
 ): Promise<string> {
   const existing = await tx.albumExternalId.findUnique({
-    where: { provider_providerId: { provider: Provider.spotify, providerId: album.id } },
+    where: { provider_providerId: { provider, providerId: album.providerId } },
     select: { albumId: true },
   });
   if (existing) return existing.albumId;
 
-  const artistIds = await Promise.all(album.artists.map((a) => resolveArtist(tx, a)));
+  const artistIds = await Promise.all(album.artists.map((a) => resolveArtist(tx, provider, a)));
 
   const created = await tx.album.create({
     data: {
@@ -72,15 +77,12 @@ async function resolveAlbum(
       artistDisplay: album.artists.map((a) => a.name).join(", ") || null,
       releaseDate: parseReleaseDate(album.releaseDate),
       sourceMetadata: {
-        albumArtistUris: album.artists.map((a) => `spotify:artist:${a.id}`),
+        provider,
+        albumArtistIds: album.artists.map((a) => a.providerId),
         retrievedAt: new Date().toISOString(),
       },
       externalIds: {
-        create: {
-          provider: Provider.spotify,
-          providerId: album.id,
-          providerUrl: `https://open.spotify.com/album/${album.id}`,
-        },
+        create: { provider, providerId: album.providerId },
       },
       artists: {
         create: artistIds.map((artistId, position) => ({ artistId, position })),
@@ -106,16 +108,19 @@ interface ResolvedTrack {
 
 async function resolveTrack(
   tx: Prisma.TransactionClient,
-  track: SpotifyTrackData,
+  provider: Provider,
+  track: ImportableTrack,
 ): Promise<ResolvedTrack> {
   const existing = await tx.recordingExternalId.findUnique({
-    where: { provider_providerId: { provider: Provider.spotify, providerId: track.id } },
+    where: { provider_providerId: { provider, providerId: track.providerId } },
     select: { recordingId: true },
   });
   if (existing) return { recordingId: existing.recordingId, wasCreated: false };
 
-  const albumId = track.album ? await resolveAlbum(tx, track.album) : null;
-  const artistIds = await Promise.all(track.artists.map((a) => resolveArtist(tx, a)));
+  const albumId = track.album ? await resolveAlbum(tx, provider, track.album) : null;
+  const artistIds = await Promise.all(
+    track.artists.map((a) => resolveArtist(tx, provider, a)),
+  );
 
   const recording = await tx.recording.create({
     data: {
@@ -133,12 +138,11 @@ async function resolveTrack(
       releaseDate: parseReleaseDate(track.album?.releaseDate ?? null),
       externalIds: {
         create: {
-          provider: Provider.spotify,
-          providerId: track.id,
-          providerUrl: `https://open.spotify.com/track/${track.id}`,
+          provider,
+          providerId: track.providerId,
           isrc: track.isrc,
           sourceMetadata: {
-            artistUris: track.artists.map((a) => `spotify:artist:${a.id}`),
+            artistIds: track.artists.map((a) => a.providerId),
             trackNumber: track.trackNumber,
           },
         },
@@ -160,17 +164,16 @@ async function resolveTrack(
  */
 export async function importCollection(
   ownerId: string,
-  data: SpotifyCollectionData,
+  data: ImportableCollection,
   options: { skippedCount?: number } = {},
 ): Promise<ImportSummary> {
-  const sourceUrl = `https://open.spotify.com/${data.kind}/${data.id}`;
 
   return prisma.$transaction(
     async (tx) => {
       const record = await tx.import.create({
         data: {
           ownerId,
-          provider: Provider.spotify,
+          provider: data.provider,
           filename: null,
           status: "processing",
           rowCount: data.tracks.length,
@@ -182,7 +185,7 @@ export async function importCollection(
       const recordingIds: string[] = [];
 
       for (const track of data.tracks) {
-        const resolved = await resolveTrack(tx, track);
+        const resolved = await resolveTrack(tx, data.provider, track);
         if (resolved.wasCreated) created++;
         else matched++;
         recordingIds.push(resolved.recordingId);
@@ -194,9 +197,9 @@ export async function importCollection(
           name: data.name,
           description: data.description,
           importId: record.id,
-          sourceProvider: Provider.spotify,
-          sourceId: data.id,
-          sourceUrl,
+          sourceProvider: data.provider,
+          sourceId: data.providerId,
+          sourceUrl: data.sourceUrl,
           sourceSnapshotAt: new Date(),
           // Positions follow SOURCE ORDER, and duplicates are preserved — a
           // playlist may legitimately contain the same track twice.

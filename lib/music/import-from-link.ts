@@ -7,6 +7,7 @@ import {
   spotifyConfigured,
 } from "@/lib/music/spotify/web-api";
 import { importCollection, type ImportSummary } from "@/lib/music/import-collection";
+import { fromSpotifyCollection } from "@/lib/music/importable";
 
 /**
  * Pasting an album or public playlist link and getting a collection.
@@ -88,7 +89,7 @@ export async function importFromSpotifyLink(
       };
     }
 
-    const summary = await importCollection(ownerId, data);
+    const summary = await importCollection(ownerId, fromSpotifyCollection(data));
     return { ok: true, summary };
   } catch (error) {
     if (!(error instanceof SpotifyUnavailableError)) throw error;
