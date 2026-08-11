@@ -2,19 +2,16 @@
 
 Durable handoff between sessions. Read this before relying on chat context. Update it after every phase and before ending a substantial session.
 
-**Last updated:** August 11, 2026
-**Current phase:** Phases 2 and 3 complete; deployed and serving over HTTPS at https://v2.playlistnotes.io. Phase 4 (sharing, search, polish) is next.
+**Last updated:** August 11, 2026 (overnight session)
+**Current phase:** Phases 2, 3 and 4 complete. Live over HTTPS at https://v2.playlistnotes.io, gated and `noindex`. Every core capability now has a surface.
 **Checkpoint 1a: PASSED.** The schema review produced two corrections, both now merged — `album_artists` was built, and the `Provider` enum was cut back to authoritative sources.
-**Next milestone:** the collections UI — browsing an imported collection and writing a note against a track *in playlist context*, which is the thing v1 was actually for and the last core capability with no surface.
+**Next milestone:** the Clerk → SuperTokens migration, which is the last piece of scope with a design decision left in it. Everything after it is verification and polish.
 
-**Progress: roughly 72%.** Estimated 14–20 hours remain to a public release, or
-6–9 working days at 2–3 h/day. That is past the original 15-day estimate because
-album and playlist import, full Apple Music support, and the SuperTokens
-migration were all added to scope after it was written.
+**Progress: roughly 88%.** Estimated 6–9 hours remain to a public release.
 
-The remaining work is unusually well understood: no unknowns of the kind that
-produced the 30-second proxy hang, and every blocked item is a credential or an
-account rather than a design question.
+The remaining work is an auth-provider migration, the browser specs that depend
+on it, and an accessibility pass. No unknowns of the kind that produced the
+proxy-loop hang; nothing blocked on a credential or an account.
 
 ---
 
@@ -331,14 +328,94 @@ explicit flag. `docs/runbook.md` has the procedures.
 
 **Test totals: 191.** 93 unit, 88 integration, 10 Playwright.
 
+## Overnight session, August 11 2026
+
+Everything in the core loop now has a surface. What was added, and why each
+decision went the way it did:
+
+### Collections you can actually annotate
+
+The collection page was a track listing you could read but not write to, which
+left `notes.collection_item_id` unreachable — the column exists because "this
+song, third into this playlist" is a different statement from "this song", and
+annotating a playlist track by track is what v1 was actually for.
+
+The action accepts a collection item id and a body and **nothing else**; the
+recording is resolved from the item server-side. A client able to name both
+could pair someone else's item with an arbitrary recording, and validating that
+pair afterwards is a weaker position than never accepting it.
+
+### Sharing that cannot leak a note
+
+Collections get unlisted links with the same rotatable-token model as notes.
+The invariant is structural: `getSharedCollection` selects a narrow shape that
+does not include the notes relation **at all**, so there is nothing on the
+shared page to accidentally render. The tests search the serialised payload for
+the note's text rather than asserting on shape, so an `include` added later
+fails there instead of shipping.
+
+The share panel states the guarantee next to the button, with the count of notes
+that will stay private — publishing is a decision people make quickly and regret
+slowly, and an annotated collection *looks* like sharing it might share the
+annotations.
+
+### Search and tags
+
+Search is a plain GET form, so a search is linkable and survives a reload.
+Tags are unique per `(owner_id, name)` rather than globally: a shared vocabulary
+would expose one person's labels to another the moment autocomplete existed.
+The tag field replaces rather than merges, and orphaned tags are swept — with a
+test proving one user's sweep cannot delete another user's identically named tag.
+
+### CSV import
+
+Written, not installed: the format's hard parts are ~60 lines and the input is a
+file a stranger uploads, so a dependency would have meant auditing someone
+else's parser against hostile input anyway.
+
+Entities come from URI columns because `Artist URI(s)` splits on commas
+unambiguously and `Artist Name(s)` does not — **"Tyler, The Creator"** is one
+artist whose name contains a comma. A repeat upload is recognised by content
+hash and offered as a choice rather than blocked, and duplicate detection is
+owner-scoped because two people importing the same public export is two people.
+
+### Apple Music, actually working
+
+The Developer account was set up days ago; what was broken was **my** copy of the
+key. The first deployment used `grep`, which is line-based, so the multi-line PEM
+arrived truncated — 94 of 261 bytes, begin marker, no end marker. Nothing
+complained because the failure only surfaces inside a signing call no anonymous
+request makes.
+
+Repaired and verified against the live API. A catalog playlist returned 50
+tracks, **every one** carrying artist relationships and an ISRC, with
+collaborations split into separate entities ("KAROL G & Bruno Mars" arriving as
+two artists with their own ids). Notably **Apple serves its editorial playlists,
+which Spotify withholds from Development Mode apps** — the reverse of the
+asymmetry that shaped the Spotify work.
+
+`scripts/check-env.mjs` now asserts the *shape* of every configured secret
+without printing a value, and was verified to exit 1 naming the right variable
+against the broken file kept as a backup.
+
+### Backups, end to end
+
+Off-host copies are live on the `playlistnotesapp@gmail.com` Drive, using their
+own Google OAuth client rather than rclone's shared one (which rclone warns is
+being retired during 2026) and `drive.file` scope rather than full `drive`.
+
+The whole chain was rehearsed, not just the upload: a probe row written to the
+live database, backed up, encrypted, uploaded, downloaded into a directory
+holding no other copy, decrypted, and restored — probe row present, 17 tables.
+
+**Test totals: 257.** 110 unit, 137 integration, 10 Playwright.
+
 ## Not yet done — blocked on the user
 
 | Blocked item | Needs |
 | --- | --- |
-| **Backup passphrase is single-copy** | `/root/.pn-db-backup-pass` on the droplet — the same place as the backups it decrypts. Copy it into the password manager. Without it every archive is scrap. |
-| **Off-host backup copies** | An rclone remote for the `playlistnotesapp@gmail.com` Drive needs a browser OAuth grant. Until it exists, backups survive a bad migration but not a lost droplet, and the script warns on every run. |
+| *(nothing blocking — see below)* | Both backup items and the Apple Developer account were closed on August 11. |
 | Sanitized migration export | Only needed when legacy import is promoted into scope (post-core). `notes` in full plus `users` projected to `{user, lastModified}`. |
-| **Apple Music playlists** | Release blocker. Needs an Apple Developer account (~$99/yr); tracks and albums need nothing. |
 | v1 screenshots | A browser session |
 | Branch protection on `main`; tag `v1-final` | Explicit approval — the only remote is `github` and `main` auto-deploys |
 | Sentry / PostHog | Accounts to be created |
@@ -354,19 +431,18 @@ explicit flag. `docs/runbook.md` has the procedures.
 
 | # | Work | Est. | Blocked? |
 | --- | --- | --- | --- |
-| 1 | **Collections UI** — browse an imported collection, and write a note against a track *in playlist context*. The domain layer and schema (`collection_items`, `notes.collection_item_id`) are done; there is no surface. This is what v1 was actually for. | 3–4 h | no |
-| 2 | **Sharing** — unlisted/public visibility for collections, with a "what viewers see" preview. Notes already have it. Must prove publishing a collection never publishes the private notes inside it. | 2–3 h | no |
-| 3 | **User-scoped note search** — `lib/notes/search.ts` exists and is weighted and owner-scoped; it has no UI. | 1–2 h | no |
-| 4 | **Clerk → SuperTokens** — 7-day non-sliding sessions plus passkeys. Touches `lib/auth.ts`, `proxy.ts`, the sign-in/up routes, and the `users.auth_subject` upsert. Everything downstream is provider-agnostic already. | 3–5 h | no |
-| 5 | **Signed-in Playwright specs** — happy path and cross-user privacy, after (4). Then move the whole suite into CI, which the Clerk handshake currently makes flaky. | 1–2 h | after (4) |
-| 6 | **CSV import** — Exportify-compatible. Kept in scope deliberately. Value is lower than it was: link import now covers albums and public playlists, so this is for private and editorial playlists, which genuinely cannot be read any other way. | 2–3 h | no |
-| 7 | **Tags** — schema exists, no UI. | 1 h | no |
-| 8 | **Responsive and accessibility pass**, then invite ~10 testers. | 1–2 h | no |
+| 1 | **Clerk → SuperTokens** — 7-day non-sliding sessions plus passkeys. Touches `lib/auth.ts`, `proxy.ts`, the sign-in/up routes, and the `users.auth_subject` upsert. Everything downstream is provider-agnostic already, and `auth_subject` is deliberately opaque. | 3–5 h | no |
+| 2 | **Signed-in Playwright specs** — happy path and cross-user privacy, after (1). Then the whole e2e suite moves into CI, which Clerk's development handshake currently makes flaky. | 1–2 h | after (1) |
+| 3 | **Responsive and accessibility pass** — keyboard traversal of the tracklist and its inline editors, focus management, contrast, and a screen-reader pass over the share panel. | 1–2 h | no |
+| 4 | **Invite ~10 testers.** | — | no |
 
-**Not required for release:** Apple Music playlists (needs an Apple Developer
-account), legacy import of the 33 v1 notes, Sentry/PostHog, artist and album
-pages, Last.fm.
+**Deliberately not in scope for release:** legacy import of the 33 v1 notes,
+Sentry/PostHog (credentials-gated and only useful with traffic), artist and album
+pages, Last.fm, and cutover of the apex domain. All recorded in `AGENTS.md` §16.
 
-**Required before real users write anything they would miss:** the backup
-passphrase copied off the droplet, and the rclone Drive remote authorised. Both
-are in the blocked table above.
+### Everything the user was blocked on is now closed
+
+- Backup passphrase copied to the password manager — done.
+- rclone Drive remote authorised, uploads verified, round-trip restore rehearsed.
+- Apple Developer account was already set up; the truncated key was the actual
+  fault, and it is fixed.
