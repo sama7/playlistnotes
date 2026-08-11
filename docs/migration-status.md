@@ -204,18 +204,73 @@ Every artist linked from its Spotify ID, order preserved, snapshot recorded.
 
 Playwright happy path and privacy path. Clerk needs testing tokens for automated sign-in, so this is the one part that needs setup rather than just writing.
 
+## First droplet deployment — running, August 10 2026
+
+The app runs on the droplet at `127.0.0.1:3001` under pm2 `playlistnotes`,
+behind its own nginx vhost, against a droplet-local PostgreSQL. MKDb was not
+touched: its vhost, certificate, database, and port 3000 are unchanged and
+verified healthy (`https://mkdb.co → 200`) after every step.
+
+- Node 24.9.0 installed isolated at `/opt/node24`; the system Node stays 18.19.1 for MKDb.
+- Role and database `playlistnotes`; all migrations applied via `prisma migrate deploy` — 17 tables.
+- `.env` written 0600, piped from the local file over ssh so no secret was ever displayed.
+- Artifact built locally and rsynced to `/srv/playlistnotes/current`.
+- nginx vhost from `deploy/nginx/v2.playlistnotes.io.conf`, enabled and reloaded.
+- Memory after deployment: 1.2 Gi available of 1.9 Gi, all three pm2 processes online.
+
+### The bug that made the first deployment look like a database failure
+
+Every route that rendered hung for 30 seconds and returned 500 with
+`Failed to proxy http://localhost:3001/ … socket hang up`, while routes the
+proxy short-circuits redirected instantly. Prisma was verified working directly
+on the box, which ruled out the obvious explanation and left a confusing one.
+
+Next builds a per-request `initUrl` from the hostname it was started with, but
+`next/dist/server/web/next-url.js` normalises **any** loopback hostname —
+`127.0.0.1` included — to the literal string `localhost` when constructing the
+URL that proxy code sees. Clerk's middleware sets `x-middleware-rewrite` to that
+URL on every request it decorates. Next relativises the rewrite against
+`initUrl`; started with `HOSTNAME=127.0.0.1` the two origins disagree, so Next
+classifies its own rewrite as external and proxies the request to itself.
+
+It reproduced identically on a laptop from the same artifact, which is what made
+it tractable — it was never a droplet problem.
+
+**`scripts/start-standalone.cjs` is now the production entry point** and owns
+both halves of the fix: `HOSTNAME=localhost` so the origins match, and
+`ipv4first` DNS so the socket still binds IPv4 `127.0.0.1` for nginx. They live
+in a committed file rather than a pm2 flag because a pm2 flag is exactly how the
+invariant would be lost on the next restart.
+
+### Why the whole test suite was blind to it
+
+172 tests passed, `next build` succeeded, and the process logged `Ready`. Nothing
+that runs before a server boots can see this class of bug. `scripts/smoke.js`
+makes real anonymous requests to the built artifact — public pages render with a
+body, a protected route redirects, health reports the database — and CI now runs
+it against the package it is about to upload. It was verified to fail, non-zero,
+on exactly this regression before being trusted.
+
+One thing it must not do is send `Accept: text/html`: a Clerk **development**
+instance answers document requests carrying no dev-browser cookie with a
+handshake redirect, which is correct behaviour but would mask whether the page
+renders, and points at Clerk's domain.
+
+Also added: the `/api/health` route the proxy already whitelisted but which had
+never been written, and `prisma/` inside the artifact so the droplet can run
+`migrate deploy` without a checkout.
+
 ## Not yet done — blocked on the user
 
 | Blocked item | Needs |
 | --- | --- |
+| **TLS for `v2.playlistnotes.io`** | **A GoDaddy A record → the droplet.** The vhost is installed and serving; certbot's HTTP-01 challenge cannot run until the name resolves. This is the only thing between here and a gated HTTPS staging host. |
 | Sanitized migration export | Only needed when legacy import is promoted into scope (post-core). `notes` in full plus `users` projected to `{user, lastModified}`. |
-| **Managed PostgreSQL** | Needs a DigitalOcean database, ~$15–24/mo. The last thing blocking a deployment. |
+| **Managed PostgreSQL** | ~$15–24/mo. The droplet-local database is fine for gated staging; Managed PG is required before real users. |
 | **Apple Music playlists** | Release blocker. Needs an Apple Developer account (~$99/yr); tracks and albums need nothing. |
 | v1 screenshots | A browser session |
-| Push `v2`; branch protection on `main`; tag `v1-final` | Explicit approval — the only remote is `github` and `main` auto-deploys |
-| Clerk / Sentry / PostHog | Accounts to be created |
-| Managed PostgreSQL | Provisioning approval (recurring cost) |
-| First deployment | SSH approval; nginx, pm2, certbot, GoDaddy A record |
+| Branch protection on `main`; tag `v1-final` | Explicit approval — the only remote is `github` and `main` auto-deploys |
+| Sentry / PostHog | Accounts to be created |
 
 ## Risks
 
@@ -226,4 +281,6 @@ Playwright happy path and privacy path. Clerk needs testing tokens for automated
 
 ## Next vertical slice
 
-Finish the Phase 1 foundation through the schema and seed, then **stop at Checkpoint 1a** so the user can browse the seeded model in Prisma Studio before any Managed PostgreSQL spend or droplet change.
+Replace `/` — it is still the Checkpoint 1a schema inspector, a development tool
+standing where the landing page belongs — and wire album/playlist import and
+Apple capture into the capture UI. Neither needs anything from the user.
