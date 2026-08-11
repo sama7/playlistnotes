@@ -397,3 +397,48 @@ details.csv-import {
 }
 details.csv-import summary { font-size: 0.95rem; color: var(--fg); font-weight: 600; }
 details.csv-import input[type="file"] { border: none; padding: 0; }
+
+/* ---- accessibility ---- */
+
+.skip-link {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  z-index: 10;
+  padding: 0.6rem 1rem;
+  background: var(--fg);
+  color: var(--bg);
+  border-radius: 0 0 4px 0;
+}
+.skip-link:focus {
+  left: 0;
+}
+
+/*
+  A visible focus ring on every interactive element. The browser default is
+  drawn in a colour that disappears against a dark background once the page sets
+  its own, so it is replaced rather than relied on. :focus-visible, not :focus,
+  so a mouse click does not leave a ring behind.
+*/
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+summary:focus-visible,
+[href]:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+/* Comfortable hit targets on touch, without enlarging the desktop layout. */
+@media (pointer: coarse) {
+  button, summary, a.chip.tag { min-height: 2.75rem; }
+  button.linkish { min-height: 2.75rem; display: inline-flex; align-items: center; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

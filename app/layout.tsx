@@ -16,7 +16,17 @@ export default function RootLayout({
   return (
     <ClerkProvider>
       <html lang="en">
-        <body>{children}</body>
+        <body>
+          {/*
+            Visible only on focus, which is exactly when it is wanted. Without
+            it a keyboard or screen-reader user traverses the whole header on
+            every page before reaching anything they came for.
+          */}
+          <a href="#content" className="skip-link">
+            Skip to content
+          </a>
+          <div id="content">{children}</div>
+        </body>
       </html>
     </ClerkProvider>
   );
