@@ -2,9 +2,11 @@
 
 import { revalidatePath } from "next/cache";
 import { requireUser } from "@/lib/auth";
-import { captureFromSpotifyLink } from "@/lib/music/capture";
+import { captureFromLink } from "@/lib/music/capture-track";
 import { importFromSpotifyLink } from "@/lib/music/import-from-link";
+import { importFromAppleLink } from "@/lib/music/import-from-apple";
 import { parseSpotifyLink } from "@/lib/music/spotify/parse-link";
+import { parseAppleMusicLink } from "@/lib/music/apple/parse-link";
 import {
   NoteNotFoundError,
   createNote,
@@ -47,16 +49,27 @@ export async function captureAndCreateNote(
   const body = String(formData.get("body") ?? "").trim();
   const values = { link, title, artistDisplay, body };
 
-  if (!link) return { error: "Paste a Spotify link to get started.", values };
+  if (!link) return { error: "Paste a Spotify or Apple Music link to get started.", values };
 
   /**
-   * One box, three outcomes. An album or playlist link imports a collection
-   * and needs no note text; a track link writes a note. Routing on what was
-   * actually pasted beats making the user pick the right form first.
+   * One box, two providers, two outcomes. An album or playlist link imports a
+   * collection and needs no note text; a track link writes a note. Routing on
+   * what was actually pasted beats making the user pick the right form first,
+   * and it is why the box never asks which service a link came from.
    */
-  const kind = parseSpotifyLink(link).kind;
-  if (kind === "album" || kind === "playlist") {
-    const result = await importFromSpotifyLink(user.id, link);
+  const spotifyKind = parseSpotifyLink(link).kind;
+  const appleKind = parseAppleMusicLink(link).kind;
+  const isCollection =
+    spotifyKind === "album" ||
+    spotifyKind === "playlist" ||
+    appleKind === "album" ||
+    appleKind === "playlist";
+
+  if (isCollection) {
+    const result =
+      appleKind === "album" || appleKind === "playlist"
+        ? await importFromAppleLink(user.id, link)
+        : await importFromSpotifyLink(user.id, link);
     if (!result.ok) return { error: result.message, values };
     revalidatePath("/notes");
     revalidatePath("/collections");
@@ -72,7 +85,7 @@ export async function captureAndCreateNote(
 
   if (!body) return { error: "Write something about the track.", values };
 
-  const capture = await captureFromSpotifyLink(link, {
+  const capture = await captureFromLink(link, {
     fallback: title || artistDisplay ? { title, artistDisplay } : undefined,
   });
 
@@ -82,15 +95,15 @@ export async function captureAndCreateNote(
       // Only this refusal is recoverable by the user filling in more; the
       // others are explanations, not prompts.
       needsMetadata: capture.reason === "needs-manual-metadata",
-      // Hand back the title oEmbed gave us so the user fills one field, not
-      // two. oEmbed never supplies an artist, so this branch is the norm on a
-      // first paste rather than an error case.
+      // Hand back whatever title we did learn so the user fills one field, not
+      // two. Only reachable on the degraded no-credential path now that the
+      // Web API supplies the artist.
       values: { ...values, title: values.title || capture.suggested?.title || "" },
     };
   }
 
   try {
-    await createNote(user.id, { recordingId: capture.result.recording.id, body });
+    await createNote(user.id, { recordingId: capture.recording.id, body });
   } catch {
     return { error: "Something went wrong saving that note.", values };
   }

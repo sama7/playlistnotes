@@ -1,11 +1,6 @@
-import { Prisma, Provider, RecordingOrigin } from "@prisma/client";
 import { prisma } from "@/lib/db";
-import { normalizedKey } from "@/lib/music/normalize";
-import type {
-  ImportableArtist,
-  ImportableCollection,
-  ImportableTrack,
-} from "./importable";
+import { resolveImportableTrack } from "./persist-track";
+import type { ImportableCollection } from "./importable";
 
 /**
  * Turning a Spotify album or public playlist into a Playlistnotes collection.
@@ -32,128 +27,6 @@ export interface ImportSummary {
   /** Episodes, local files and removed tracks — reported, never faked. */
   skipped: number;
   truncated: boolean;
-}
-
-/** Upsert an artist by provider ID. Never creates from a name. */
-async function resolveArtist(
-  tx: Prisma.TransactionClient,
-  provider: Provider,
-  ref: ImportableArtist,
-): Promise<string> {
-  const existing = await tx.artistExternalId.findUnique({
-    where: { provider_providerId: { provider, providerId: ref.providerId } },
-    select: { artistId: true },
-  });
-  if (existing) return existing.artistId;
-
-  const artist = await tx.artist.create({
-    data: {
-      name: ref.name,
-      sortName: ref.name,
-      externalIds: {
-        create: { provider, providerId: ref.providerId },
-      },
-    },
-  });
-  return artist.id;
-}
-
-async function resolveAlbum(
-  tx: Prisma.TransactionClient,
-  provider: Provider,
-  album: NonNullable<ImportableTrack["album"]>,
-): Promise<string> {
-  const existing = await tx.albumExternalId.findUnique({
-    where: { provider_providerId: { provider, providerId: album.providerId } },
-    select: { albumId: true },
-  });
-  if (existing) return existing.albumId;
-
-  const artistIds = await Promise.all(album.artists.map((a) => resolveArtist(tx, provider, a)));
-
-  const created = await tx.album.create({
-    data: {
-      title: album.name,
-      artistDisplay: album.artists.map((a) => a.name).join(", ") || null,
-      releaseDate: parseReleaseDate(album.releaseDate),
-      sourceMetadata: {
-        provider,
-        albumArtistIds: album.artists.map((a) => a.providerId),
-        retrievedAt: new Date().toISOString(),
-      },
-      externalIds: {
-        create: { provider, providerId: album.providerId },
-      },
-      artists: {
-        create: artistIds.map((artistId, position) => ({ artistId, position })),
-      },
-    },
-  });
-  return created.id;
-}
-
-/** Spotify release dates come as YYYY, YYYY-MM or YYYY-MM-DD. */
-function parseReleaseDate(value: string | null): Date | null {
-  if (!value) return null;
-  const parts = value.split("-");
-  const [y, m, d] = [parts[0], parts[1] ?? "01", parts[2] ?? "01"];
-  const date = new Date(`${y}-${m}-${d}T00:00:00.000Z`);
-  return Number.isNaN(date.getTime()) ? null : date;
-}
-
-interface ResolvedTrack {
-  recordingId: string;
-  wasCreated: boolean;
-}
-
-async function resolveTrack(
-  tx: Prisma.TransactionClient,
-  provider: Provider,
-  track: ImportableTrack,
-): Promise<ResolvedTrack> {
-  const existing = await tx.recordingExternalId.findUnique({
-    where: { provider_providerId: { provider, providerId: track.providerId } },
-    select: { recordingId: true },
-  });
-  if (existing) return { recordingId: existing.recordingId, wasCreated: false };
-
-  const albumId = track.album ? await resolveAlbum(tx, provider, track.album) : null;
-  const artistIds = await Promise.all(
-    track.artists.map((a) => resolveArtist(tx, provider, a)),
-  );
-
-  const recording = await tx.recording.create({
-    data: {
-      title: track.name,
-      artistDisplay: track.artistDisplay,
-      origin: RecordingOrigin.provider,
-      normalizedKey: normalizedKey({
-        title: track.name,
-        artistDisplay: track.artistDisplay,
-        durationMs: track.durationMs,
-      }),
-      durationMs: track.durationMs,
-      albumId,
-      releaseTitle: track.album?.name ?? null,
-      releaseDate: parseReleaseDate(track.album?.releaseDate ?? null),
-      externalIds: {
-        create: {
-          provider,
-          providerId: track.providerId,
-          isrc: track.isrc,
-          sourceMetadata: {
-            artistIds: track.artists.map((a) => a.providerId),
-            trackNumber: track.trackNumber,
-          },
-        },
-      },
-      artists: {
-        create: artistIds.map((artistId, position) => ({ artistId, position })),
-      },
-    },
-  });
-
-  return { recordingId: recording.id, wasCreated: true };
 }
 
 /**
@@ -185,7 +58,7 @@ export async function importCollection(
       const recordingIds: string[] = [];
 
       for (const track of data.tracks) {
-        const resolved = await resolveTrack(tx, data.provider, track);
+        const resolved = await resolveImportableTrack(tx, data.provider, track);
         if (resolved.wasCreated) created++;
         else matched++;
         recordingIds.push(resolved.recordingId);

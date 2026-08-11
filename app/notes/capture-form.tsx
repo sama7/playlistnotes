@@ -5,12 +5,19 @@ import Link from "next/link";
 import { captureAndCreateNote, type CaptureState } from "./actions";
 
 /**
- * The capture form.
+ * The capture form. One box, both providers, three outcomes.
  *
- * Title and artist stay editable at all times rather than appearing only on
- * failure. Spotify's oEmbed returns a title string with no separate artist
- * field, so even a successful lookup cannot fully populate a recording — and
- * the user is the authority on what they meant.
+ * A track link writes a note; an album or playlist link imports a collection.
+ * The user is never asked which service a link came from or which kind of thing
+ * it is — the server works that out from what was pasted, because making
+ * someone pick the right form before they can paste is a worse experience than
+ * anything it would save.
+ *
+ * Title and artist stay editable rather than appearing only on failure. They
+ * are now rarely needed: with a Spotify credential configured the Web API
+ * supplies the artist, and Apple's lookup does too. They remain because that
+ * credential is optional, and because the user is the authority on what they
+ * meant.
  */
 export function CaptureForm() {
   const [state, formAction, pending] = useActionState<CaptureState, FormData>(
@@ -21,13 +28,13 @@ export function CaptureForm() {
   return (
     <form action={formAction} className="capture">
       <div className="field">
-        <label htmlFor="link">Spotify link</label>
+        <label htmlFor="link">Music link</label>
         <input
           id="link"
           name="link"
           type="text"
           inputMode="url"
-          placeholder="Track, album or playlist — paste any Spotify link"
+          placeholder="Paste a Spotify or Apple Music track, album or playlist link"
           defaultValue={state.values?.link ?? ""}
           aria-describedby={state.error ? "capture-error" : undefined}
           required
@@ -62,8 +69,8 @@ export function CaptureForm() {
           </div>
         </div>
         <p className="note">
-          Spotify&rsquo;s public preview gives a title but never a separate artist, so this is
-          sometimes the only way we can get it right.
+          Usually filled in for you. If a link can&rsquo;t be read, these are how a note still
+          gets saved rather than blocked.
         </p>
       </details>
 
