@@ -38,7 +38,13 @@ export interface ImportSummary {
 export async function importCollection(
   ownerId: string,
   data: ImportableCollection,
-  options: { skippedCount?: number } = {},
+  options: {
+    skippedCount?: number;
+    /** Recorded on the import for provenance when the source was a file. */
+    filename?: string | null;
+    /** SHA-256 of the original bytes, so a repeat upload can be recognised. */
+    contentHash?: string | null;
+  } = {},
 ): Promise<ImportSummary> {
 
   return prisma.$transaction(
@@ -47,7 +53,8 @@ export async function importCollection(
         data: {
           ownerId,
           provider: data.provider,
-          filename: null,
+          filename: options.filename ?? null,
+          contentHash: options.contentHash ?? null,
           status: "processing",
           rowCount: data.tracks.length,
         },
@@ -71,8 +78,9 @@ export async function importCollection(
           description: data.description,
           importId: record.id,
           sourceProvider: data.provider,
-          sourceId: data.providerId,
-          sourceUrl: data.sourceUrl,
+          // Empty for a CSV, which is not addressable — only its tracks are.
+          sourceId: data.providerId || null,
+          sourceUrl: data.sourceUrl || null,
           sourceSnapshotAt: new Date(),
           // Positions follow SOURCE ORDER, and duplicates are preserved — a
           // playlist may legitimately contain the same track twice.

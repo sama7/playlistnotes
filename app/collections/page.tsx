@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { CsvImportForm } from "./import-form";
 
 export const dynamic = "force-dynamic";
 
@@ -25,10 +26,13 @@ export default async function CollectionsPage() {
         <Link href="/notes">Notes</Link>
       </header>
 
+      <CsvImportForm />
+
       {collections.length === 0 ? (
         <p className="note" style={{ marginTop: "1.5rem" }}>
-          Nothing yet. Paste a Spotify album or playlist link on the{" "}
-          <Link href="/notes">notes page</Link> and the whole thing comes across.
+          Nothing yet. Paste a Spotify or Apple Music album or playlist link on the{" "}
+          <Link href="/notes">notes page</Link> and the whole thing comes across — or
+          import a CSV above.
         </p>
       ) : (
         <ul className="notes" style={{ marginTop: "1.5rem" }}>
@@ -52,7 +56,7 @@ export default async function CollectionsPage() {
               {c.sourceUrl && (
                 <p className="note">
                   <a href={c.sourceUrl} target="_blank" rel="noopener noreferrer">
-                    Open in Spotify
+                    Open the original
                   </a>
                 </p>
               )}

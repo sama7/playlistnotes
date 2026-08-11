@@ -386,3 +386,14 @@ a.chip.tag.active {
   border-color: var(--fg);
 }
 a.chip.tag.active .note { color: var(--bg); opacity: 0.7; }
+
+/* ---- csv import ---- */
+
+details.csv-import {
+  margin: 1.5rem 0;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+details.csv-import summary { font-size: 0.95rem; color: var(--fg); font-weight: 600; }
+details.csv-import input[type="file"] { border: none; padding: 0; }
