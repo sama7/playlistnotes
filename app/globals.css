@@ -356,3 +356,33 @@ button.linkish.danger-text { color: #b3261e; }
 
 .share-panel p { margin: 0; }
 .share-url code { word-break: break-all; font-size: 0.85rem; }
+
+/* ---- search ---- */
+
+form.search {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  margin: 0 0 1.5rem;
+}
+
+form.search input { flex: 1; }
+
+/* ---- tags ---- */
+
+form.tag-form { display: flex; gap: 0.5rem; align-items: center; }
+form.tag-form input { font-size: 0.85rem; padding: 0.3rem 0.45rem; }
+
+.tag-list { gap: 0.4rem; }
+
+a.chip.tag {
+  text-decoration: none;
+  font-size: 0.75rem;
+  padding: 0.1rem 0.5rem;
+}
+a.chip.tag.active {
+  background: var(--fg);
+  color: var(--bg);
+  border-color: var(--fg);
+}
+a.chip.tag.active .note { color: var(--bg); opacity: 0.7; }

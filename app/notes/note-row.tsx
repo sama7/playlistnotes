@@ -1,4 +1,6 @@
+import Link from "next/link";
 import type { Note, Recording, RecordingExternalId } from "@prisma/client";
+import { setNoteTagsAction } from "./tag-actions";
 import {
   deleteNoteAction,
   publishNoteAction,
@@ -9,6 +11,7 @@ import {
 
 type NoteWithRecording = Note & {
   recording: Recording & { externalIds: RecordingExternalId[] };
+  tags?: Array<{ tag: { name: string } }>;
 };
 
 /**
@@ -22,6 +25,7 @@ export function NoteRow({ note, baseUrl }: { note: NoteWithRecording; baseUrl: s
   const artist = note.displayArtist ?? note.recording.artistDisplay;
   const spotify = note.recording.externalIds.find((e) => e.provider === "spotify");
   const shareUrl = note.shareToken ? `${baseUrl}/n/${note.shareToken}` : null;
+  const tagNames = (note.tags ?? []).map((t) => t.tag.name);
 
   return (
     <li className="note-card">
@@ -47,6 +51,34 @@ export function NoteRow({ note, baseUrl }: { note: NoteWithRecording; baseUrl: s
           )}
         </div>
       </form>
+
+      {/* Tags are one text field rather than a chip editor: the whole value is
+          what gets saved, so removing a word actually removes the tag. A chip
+          UI would need its own delete affordance to say the same thing. */}
+      <form action={setNoteTagsAction.bind(null, note.id)} className="tag-form">
+        <label htmlFor={`tags-${note.id}`} className="visually-hidden">
+          Tags, separated by commas
+        </label>
+        <input
+          id={`tags-${note.id}`}
+          name="tags"
+          defaultValue={tagNames.join(", ")}
+          placeholder="tags, separated by commas"
+        />
+        <button type="submit" className="linkish">
+          Save tags
+        </button>
+      </form>
+
+      {tagNames.length > 0 && (
+        <div className="row tag-list">
+          {tagNames.map((name) => (
+            <Link key={name} href={`/notes?tag=${encodeURIComponent(name)}`} className="chip tag">
+              {name}
+            </Link>
+          ))}
+        </div>
+      )}
 
       <div className="row">
         {note.visibility === "private" ? (
