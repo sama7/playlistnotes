@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { TrackNote } from "./track-note";
+import { SharePanel } from "./share-panel";
 
 export const dynamic = "force-dynamic";
 
@@ -47,6 +48,7 @@ export default async function CollectionPage({
   if (!collection) notFound();
 
   const annotated = collection.items.filter((i) => i.notes.length > 0).length;
+  const baseUrl = process.env.APP_BASE_URL ?? "http://localhost:3100";
 
   return (
     <main>
@@ -66,6 +68,15 @@ export default async function CollectionPage({
           </a>
         </p>
       )}
+
+      <SharePanel
+        collectionId={collection.id}
+        visibility={collection.visibility}
+        shareToken={collection.shareToken}
+        baseUrl={baseUrl}
+        trackCount={collection.items.length}
+        annotatedCount={annotated}
+      />
 
       <ol className="tracklist">
         {collection.items.map((item) => {

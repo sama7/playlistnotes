@@ -341,3 +341,18 @@ button.linkish.danger-text { color: #b3261e; }
 @media (prefers-color-scheme: dark) {
   button.linkish.danger-text { color: #ef9a93; }
 }
+
+/* ---- share panel ---- */
+
+.share-panel {
+  margin-top: 1.5rem;
+  padding: 1rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.share-panel p { margin: 0; }
+.share-url code { word-break: break-all; font-size: 0.85rem; }
