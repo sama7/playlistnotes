@@ -295,3 +295,49 @@ button.secondary {
   padding-top: 1rem;
   border-top: 1px solid var(--line);
 }
+
+/* ---- collection tracklist ---- */
+
+ol.tracklist {
+  list-style: none;
+  margin: 1.5rem 0 0;
+  padding: 0;
+}
+
+.track {
+  display: flex;
+  gap: 0.9rem;
+  padding: 0.9rem 0;
+  border-top: 1px solid var(--line);
+}
+
+.track-num {
+  min-width: 2ch;
+  text-align: right;
+  padding-top: 0.1rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.track-main { flex: 1; min-width: 0; }
+.track-title { font-weight: 600; }
+
+.track-note { margin-top: 0.5rem; }
+.track-note-body { margin: 0 0 0.35rem; white-space: pre-wrap; }
+.track-note.inline-edit { display: flex; flex-direction: column; gap: 0.5rem; }
+
+/* A button that reads as a link: these are low-frequency row actions, and a
+   row of filled buttons down a 50-track playlist is visual noise. */
+button.linkish {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--accent);
+  font-size: 0.85rem;
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+  cursor: pointer;
+}
+button.linkish.danger-text { color: #b3261e; }
+@media (prefers-color-scheme: dark) {
+  button.linkish.danger-text { color: #ef9a93; }
+}
