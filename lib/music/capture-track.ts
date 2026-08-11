@@ -137,7 +137,17 @@ async function captureSpotifyTrack(
   const known = await findByProviderId(Provider.spotify, ref.id);
   if (known) return { ok: true, recording: known, source: "database", linked: true };
 
-  if (spotifyConfigured()) {
+  /**
+   * The credential gate guards the DEFAULT implementation, not an injected one.
+   *
+   * Gating on `spotifyConfigured()` alone meant an injected `fetchTrackImpl` was
+   * silently ignored when no credential happened to be present — so tests
+   * exercised the Web API path on a developer laptop and the oEmbed path in CI,
+   * which is the precise failure mode of a test that proves nothing. An injected
+   * implementation is by definition not a call to the real API, so there is
+   * nothing for the gate to protect.
+   */
+  if (options.fetchTrackImpl || spotifyConfigured()) {
     try {
       // Returns null rather than throwing on an unavailable track or a failed
       // request, so a null here is a reason to degrade, not to fail.
