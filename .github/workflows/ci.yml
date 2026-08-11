@@ -165,7 +165,7 @@ jobs:
           # The production entry point. It carries environment invariants that
           # would otherwise live in a pm2 flag and be lost on the next restart.
           mkdir -p artifact/scripts
-          cp scripts/start-standalone.cjs scripts/smoke.js artifact/scripts/
+          cp scripts/start-standalone.cjs scripts/smoke.js scripts/check-env.mjs artifact/scripts/
           # Migrations travel with the artifact so the droplet can run
           # `prisma migrate deploy` without a checkout of the repository.
           cp -r prisma artifact/prisma

@@ -31,10 +31,23 @@ CI builds the artifact; the droplet only runs it. From a clean checkout:
 npm run build
 # package: .next/standalone + .next/static + public + scripts/ + prisma/
 rsync -az --delete --exclude '.env' artifact/ root@<droplet>:/srv/playlistnotes/current/
+ssh root@<droplet> 'cd /srv/playlistnotes/current && /opt/node24/bin/node scripts/check-env.mjs .env'
 ssh root@<droplet> 'cd /srv/playlistnotes/current && npx prisma migrate deploy'
 ssh root@<droplet> 'pm2 restart playlistnotes --update-env'
 ssh root@<droplet> 'cd /srv/playlistnotes/current && /opt/node24/bin/node scripts/smoke.js https://v2.playlistnotes.io'
 ```
+
+`check-env.mjs` validates the **shape** of every configured secret and never
+prints a value. It exists because of a failure neither the build nor the smoke
+test could see: the first deployment copied secrets with `grep`, which is
+line-based, so the multi-line Apple private key arrived truncated — a BEGIN
+marker, no END, 94 of 261 bytes. The app started, served every page, passed
+every check, and Apple Music was quietly broken, because the failure only
+surfaces inside a signing call no anonymous request makes. A secret can be
+present and wrong, and presence is all an "is it set?" check ever proves.
+
+**Never copy a multi-line secret with `grep` or line-based tools.** Extract the
+whole value and pipe it over ssh without displaying it.
 
 `--exclude '.env'` matters: the environment file lives on the droplet at mode
 0600 and must never be overwritten by a deploy or copied into the repository.
@@ -82,30 +95,54 @@ a scratch database: 17 tables, probe row present. A wrong passphrase was
 confirmed to fail with a clear message rather than half-restoring, and the
 ciphertext was confirmed to contain no readable SQL.
 
-### Two things only the account owner can do
+### Off-host copies — configured 2026-08-11
 
-1. **Copy the passphrase off the droplet.** It is at `/root/.pn-db-backup-pass`,
-   mode 0600, and was generated on the box so it has never appeared in a
-   transcript. **Right now it exists in exactly one place, which is the same
-   place as the backups it decrypts** — so losing the droplet loses both.
-   ```bash
-   ssh root@<droplet> 'cat /root/.pn-db-backup-pass'
-   ```
-   Put it in the password manager. Without it every archive is scrap.
+Backups are mirrored to Google Drive on the `playlistnotesapp@gmail.com`
+account, remote `pndrive`, path `playlistnotes-backups/{hourly,daily}`.
+`PN_RCLONE_DEST` is set in `/etc/cron.d/playlistnotes-backup`, so every
+scheduled run uploads. Only ciphertext crosses the wire — Drive never holds a
+readable note body.
 
-2. **Configure the off-host copy.** Until then backups sit on the same droplet
-   as the database, which protects against a bad migration or a dropped table
-   but not against losing the droplet. The script logs a warning on every run
-   saying exactly that.
-   ```bash
-   apt-get install -y rclone
-   rclone config           # new remote "pndrive", type drive, the playlistnotesapp account
-   rclone mkdir pndrive:playlistnotes-backups
-   # then add to /etc/cron.d/playlistnotes-backup:
-   #   PN_RCLONE_DEST=pndrive:playlistnotes-backups
-   ```
-   Only ciphertext is uploaded; Drive never holds a readable note body. 15 GB
-   is ample — the archives are kilobytes at current size.
+Two details worth keeping:
+
+- **The remote uses its own Google OAuth client_id and secret, not rclone's
+  shared one.** rclone now warns that the shared client_id is being retired
+  during 2026; a remote built on it would have stopped working mid-year with a
+  confusing auth error. Ours is independent of that deadline.
+- **Scope is `drive.file`**, not full `drive`. rclone can only see and modify
+  files it created, so a compromised droplet cannot read or delete the rest of
+  that account's Drive.
+
+The browser half of OAuth was done on a laptop and the resulting config piped
+straight into the droplet over ssh, so the refresh token was never displayed or
+stored anywhere else:
+
+```bash
+rclone config show pndrive | ssh root@<droplet> 'cat >> /root/.config/rclone/rclone.conf'
+```
+
+**Round trip rehearsed 2026-08-11.** A probe row was written to the live
+database, backed up, encrypted, uploaded, then downloaded from Drive into a
+directory holding no other copy, decrypted, and restored into a scratch
+database — probe row present, 17 tables. That is the whole chain, not just the
+upload.
+
+```bash
+rclone about pndrive:                              # quota
+rclone ls pndrive:playlistnotes-backups            # what is actually stored
+rclone lsf pndrive:playlistnotes-backups/hourly | sort | tail -1
+```
+
+### The passphrase stays on the droplet
+
+`/root/.pn-db-backup-pass`, mode 0600. **It is not to be deleted** — the hourly
+job reads it on every run, and the script fails closed without it.
+
+A second copy lives in the owner's password manager, which was the part that
+mattered: the risk was ever having exactly one copy, sitting next to the
+backups it decrypts. Do not confuse this with the v1 disaster-recovery
+passphrase, which encrypted a single one-off artifact and was correctly deleted
+from disk once saved.
 
 ## TLS
 

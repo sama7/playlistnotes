@@ -23,7 +23,8 @@
     "db:reset:local": "tsx scripts/db-reset-local.ts",
     "postinstall": "prisma generate",
     "smoke": "node scripts/smoke.js",
-    "start:prod": "node scripts/start-standalone.cjs"
+    "start:prod": "node scripts/start-standalone.cjs",
+    "check:env": "node scripts/check-env.mjs"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
