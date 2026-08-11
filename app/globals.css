@@ -242,3 +242,34 @@ details > * { margin-top: 0.6rem; }
 @media (prefers-color-scheme: dark) {
   .success { background: #10301f; color: #7fe0b4; border-color: #2f8f63; }
 }
+
+/* ---- landing ---- */
+
+button.secondary {
+  background: transparent;
+  color: var(--fg);
+  border-color: var(--muted);
+}
+
+.pitch {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+  gap: 1.5rem;
+  border-top: 1px solid var(--line);
+  padding-top: 1.75rem;
+}
+
+.pitch h2 {
+  font-size: 1rem;
+  margin: 0 0 0.4rem;
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.pitch p { margin: 0; }
+
+.landing-foot {
+  margin-top: 2.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--line);
+}

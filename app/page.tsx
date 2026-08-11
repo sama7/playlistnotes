@@ -1,195 +1,81 @@
-import { prisma } from "@/lib/db";
+import Link from "next/link";
+import { redirect } from "next/navigation";
+import { auth } from "@clerk/nextjs/server";
+import { SignInButton, SignUpButton } from "@clerk/nextjs";
 
 /**
- * Checkpoint 1a — a local schema inspector, not a product surface.
+ * The landing page.
  *
- * This exists so the data model can be judged by looking at it rather than by
- * reading `schema.prisma`. It renders exactly the cases the seed was built
- * around. It is replaced by the real application in Phase 2.
+ * It replaces the Checkpoint 1a schema inspector, which listed every recording,
+ * collection and note in the database — including other people's private notes —
+ * on a route the proxy treats as public. That was correct for a local review of
+ * the data model against seeded fiction and became a privacy hole the moment the
+ * app was deployed, so it is gone rather than gated.
+ *
+ * Nothing here reads the database. A landing page that queries on every
+ * anonymous request is a free denial-of-service lever, and there is nothing
+ * public to count: notes are private by default and the catalog is not a
+ * product surface (AGENTS.md §3a).
  */
-export const dynamic = "force-dynamic";
 
 export default async function Home() {
-  const [recordings, collections, notes] = await Promise.all([
-    prisma.recording.findMany({
-      orderBy: { title: "asc" },
-      include: {
-        artists: { orderBy: { position: "asc" }, include: { artist: true } },
-        externalIds: true,
-        album: true,
-      },
-    }),
-    prisma.collection.findMany({
-      orderBy: { sourceSnapshotAt: "asc" },
-      include: {
-        items: { orderBy: { position: "asc" }, include: { recording: true } },
-        import: true,
-      },
-    }),
-    prisma.note.findMany({
-      orderBy: { createdAt: "asc" },
-      include: {
-        owner: true,
-        recording: true,
-        collectionItem: { include: { collection: true } },
-        tags: { include: { tag: true } },
-      },
-    }),
-  ]);
+  const { userId } = await auth();
+
+  // Someone signed in has no use for the pitch; send them to their notes.
+  if (userId) redirect("/notes");
 
   return (
     <main>
-      <h1>Playlistnotes v2 — schema inspector</h1>
-      <p className="lede">Local development only. Synthetic seed data.</p>
+      <p className="eyebrow">Playlistnotes</p>
+      <h1>A place to keep what music means to you.</h1>
+      <p className="lede">
+        Paste a track link and write what you actually thought. Your notes stay
+        private until you decide otherwise.
+      </p>
 
-      <div className="banner">
-        This page exists for <strong>Checkpoint 1a</strong>: judging the data model by
-        looking at it. Every row below is seeded fiction. Nothing here is the real
-        product — that starts in Phase 2.
+      <div className="row" style={{ margin: "1.5rem 0 2.5rem" }}>
+        <SignUpButton mode="modal">
+          <button type="button">Create an account</button>
+        </SignUpButton>
+        <SignInButton mode="modal">
+          <button type="button" className="secondary">
+            Sign in
+          </button>
+        </SignInButton>
       </div>
 
-      <h2>Recordings</h2>
-      <p className="note">
-        Artists are linked from provider IDs, never by splitting the display string.
-        A <code>user</code> origin means someone typed it in and it has no external
-        identifier — it stays scoped to its creator.
-      </p>
-      <div className="scroll">
-        <table>
-          <thead>
-            <tr>
-              <th>Title</th>
-              <th>artist_display (raw)</th>
-              <th>Linked artists (position)</th>
-              <th>Origin</th>
-              <th>External IDs</th>
-            </tr>
-          </thead>
-          <tbody>
-            {recordings.map((r) => (
-              <tr key={r.id}>
-                <td>{r.title}</td>
-                <td>
-                  <code>{r.artistDisplay}</code>
-                </td>
-                <td>
-                  {r.artists.length === 0 ? (
-                    <span className="note">none — display string only</span>
-                  ) : (
-                    r.artists
-                      .map((ra) => `${ra.artist.name} (${ra.position})`)
-                      .join(", ")
-                  )}
-                </td>
-                <td>
-                  <span className="pill">{r.origin}</span>
-                </td>
-                <td>
-                  {r.externalIds.length === 0 ? (
-                    <span className="note">none</span>
-                  ) : (
-                    r.externalIds
-                      .map((e) => `${e.provider}${e.isrc ? ` · ${e.isrc}` : ""}`)
-                      .join(", ")
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      <h2>Collections — immutable snapshots</h2>
-      <p className="note">
-        Two snapshots of the same logical playlist. A re-import creates a new one
-        rather than reordering items underneath an existing note. Watch for the
-        recording that appears twice in one snapshot.
-      </p>
-      {collections.map((c) => (
-        <div key={c.id} style={{ marginTop: "1.25rem" }}>
-          <strong>{c.name}</strong>{" "}
-          <span className="pill">{c.visibility}</span>{" "}
-          <span className="note">
-            snapshot {c.sourceSnapshotAt?.toISOString().slice(0, 10) ?? "—"}
-            {c.import ? ` · ${c.import.filename}` : ""}
-          </span>
-          <div className="scroll">
-            <table>
-              <thead>
-                <tr>
-                  <th>Position</th>
-                  <th>Recording</th>
-                </tr>
-              </thead>
-              <tbody>
-                {c.items.map((item) => (
-                  <tr key={item.id}>
-                    <td>{item.position}</td>
-                    <td>{item.recording.title}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+      <section className="pitch">
+        <div>
+          <h2>No Spotify account needed</h2>
+          <p className="note">
+            Sign in with an email code or Google. Playlistnotes owns your account,
+            so your notes do not belong to a streaming service and do not vanish
+            when you leave one.
+          </p>
         </div>
-      ))}
+        <div>
+          <h2>Paste a link, get the track</h2>
+          <p className="note">
+            Spotify and Apple Music track, album and public playlist links resolve
+            to real recordings with real artists. If a link cannot be read, you can
+            still type the track in yourself — a note is never blocked on metadata.
+          </p>
+        </div>
+        <div>
+          <h2>Private by default</h2>
+          <p className="note">
+            Every note starts private. Sharing is a deliberate act, one item at a
+            time, and publishing a collection never publishes the notes inside it.
+          </p>
+        </div>
+      </section>
 
-      <h2>Notes</h2>
-      <p className="note">
-        Two users hold private notes on the same shared recording. The display
-        override lives on the note, so one user&rsquo;s correction can never change
-        what the other saved, and it never mutates the shared recording row.
-      </p>
-      <div className="scroll">
-        <table>
-          <thead>
-            <tr>
-              <th>Owner</th>
-              <th>Recording</th>
-              <th>Display override</th>
-              <th>Playlist context</th>
-              <th>Visibility</th>
-              <th>Body</th>
-            </tr>
-          </thead>
-          <tbody>
-            {notes.map((n) => (
-              <tr key={n.id}>
-                <td>{n.owner.displayName ?? n.owner.username}</td>
-                <td>{n.recording.title}</td>
-                <td>
-                  {n.displayTitle || n.displayArtist ? (
-                    <code>
-                      {n.displayTitle ?? n.recording.title} —{" "}
-                      {n.displayArtist ?? n.recording.artistDisplay}
-                    </code>
-                  ) : (
-                    <span className="note">—</span>
-                  )}
-                </td>
-                <td>
-                  {n.collectionItem ? (
-                    `${n.collectionItem.collection.name} @ ${n.collectionItem.position}`
-                  ) : (
-                    <span className="note">—</span>
-                  )}
-                </td>
-                <td>
-                  <span className="pill">{n.visibility}</span>
-                </td>
-                <td>
-                  {n.body}
-                  {n.tags.length > 0 && (
-                    <div className="note">
-                      tags: {n.tags.map((t) => t.tag.name).join(", ")}
-                    </div>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <footer className="landing-foot">
+        <p className="note">
+          <Link href="/sign-in">Sign in</Link> · Playlistnotes is a personal
+          project by Samah.
+        </p>
+      </footer>
     </main>
   );
 }
