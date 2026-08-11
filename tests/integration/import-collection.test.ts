@@ -216,9 +216,13 @@ describe("re-import is a new snapshot, never a mutation", () => {
 describe("Apple Music imports through the same path", () => {
   /**
    * The adapter boundary earning its keep: the importer never learns which
-   * provider it is holding. Apple supplies one credit string and one artist id
-   * for a collaboration where Spotify supplies two — both import correctly,
-   * and neither is split or invented.
+   * provider it is holding.
+   *
+   * This fixture uses the ITUNES shape, which flattens a collaboration to one
+   * artist id. That is a limitation of the free API, not of Apple's model — the
+   * catalog API returns both artists, and `catalog.ts` uses it when a developer
+   * token is configured. Both paths must import correctly, and neither may
+   * split the credit string.
    */
   const appleAlbum = {
     id: "1796475285",
@@ -260,11 +264,11 @@ describe("Apple Music imports through the same path", () => {
     const ids = await prisma.recordingExternalId.findMany();
     expect(ids.every((e) => e.provider === "apple_music")).toBe(true);
 
-    // ONE artist entity, because Apple credits the pairing as one — not two
-    // invented from splitting "PARTYNEXTDOOR & Drake".
+    // One entity here because the iTunes fixture supplies one id — NOT because
+    // the credit string was split. The display string is preserved intact.
     expect(await prisma.artist.count()).toBe(1);
-    const artist = await prisma.artist.findFirstOrThrow();
-    expect(artist.name).toBe("PARTYNEXTDOOR & Drake");
+    const recording = await prisma.recording.findFirstOrThrow();
+    expect(recording.artistDisplay).toBe("PARTYNEXTDOOR & Drake");
   });
 
   it("keeps Spotify and Apple captures of the same music as separate mappings", async () => {
