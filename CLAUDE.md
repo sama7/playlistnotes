@@ -47,7 +47,7 @@ Use these defaults unless the user explicitly decides otherwise:
 - Vitest/Testing Library and Playwright
 - `/api/v1` bounded to core native-relevant endpoints; broad OpenAPI is post-core
 - GitHub Actions CI, which also **builds the deployable artifact** — the droplet only runs it
-- DigitalOcean droplet at `127.0.0.1:3001` under pm2 `playlistnotes`, alongside but never touching MKDb on port 3000; **DigitalOcean Managed PostgreSQL from the start**
+- DigitalOcean droplet at `127.0.0.1:3001` under pm2 `playlistnotes`, alongside but never touching MKDb on port 3000; **droplet-local PostgreSQL 16 with self-built encrypted off-host backups** — Managed PostgreSQL was considered and rejected on cost for a product with no users yet
 - Sentry and PostHog only when credentials are supplied
 
 Do not introduce React Native, E2EE, billing, collaboration, microservices, Kubernetes, or automatic Spotify synchronization during the rescue sprint. Artist and track pages, collaborative collections, album pages, and cross-provider enrichment are **wanted but deferred** — see the recorded backlog in `AGENTS.md` §16.
@@ -110,8 +110,8 @@ Follow the detailed phase plan and exit criteria in `AGENTS.md` §12 (~15 workin
 - Implement users, artists, `artist_external_ids`, albums, `album_external_ids`, recordings (with `artist_display`, `origin`, `normalized_key`), `recording_artists`, recording external IDs, notes, collections, items, imports, and tags.
 - Prove migrations work from an empty database.
 - Seed the awkward cases: multi-artist track, a repeated recording in one collection, two users with private notes on one recording, an `origin = user` entry, a note with playlist context, two snapshots of one collection.
-- **Stop at Checkpoint 1a** so the user can browse the seeded model in Prisma Studio before any Managed PostgreSQL spend or droplet change.
-- Then provision Managed PostgreSQL and make the **first gated deployment** to `v2.playlistnotes.io` — `noindex`, invite-gated, synthetic data only, URLs generated from `APP_BASE_URL` so nothing bakes in the temporary hostname.
+- **Stop at Checkpoint 1a** so the user can browse the seeded model in Prisma Studio before any droplet change.
+- Then make the **first gated deployment** to `v2.playlistnotes.io` — `noindex`, invite-gated, synthetic data only, URLs generated from `APP_BASE_URL` so nothing bakes in the temporary hostname. The database is a droplet-local role and database, never MKDb's.
 
 ### Phase C - secure note vertical slice
 

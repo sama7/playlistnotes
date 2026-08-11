@@ -193,7 +193,7 @@ Recommended stack:
 - PostHog for a minimal product-event taxonomy when credentials are supplied
 - GitHub Actions for typecheck, lint, test, migration validation, and production build
 - A long-running Node process behind nginx on DigitalOcean, managed consistently with the user's existing operational approach
-- DigitalOcean Managed PostgreSQL when the user accepts the additional cost; otherwise a separate local PostgreSQL database and role with verified off-host backups
+- **A separate droplet-local PostgreSQL database and role with verified encrypted off-host backups.** Managed PostgreSQL was evaluated and rejected on cost; it is revisited only when a real user base makes the spend proportionate. MKDb's database, role, and socket are never touched.
 
 Keep a stable, documented REST surface under `/api/v1` for future React Native clients. Server actions may be used for tightly coupled web mutations, but every material capability needed by a future native client must have a clear service-layer boundary.
 
@@ -590,8 +590,8 @@ Exit criteria: committed instructions are internally consistent, legacy data is 
 - Implement local user upsert from verified auth subject.
 - Add a redacted environment template and setup documentation.
 - Seed data must cover the cases that are hard to picture in the abstract: a multi-artist track, the same recording twice in one collection, two users holding private notes on the same recording, an `origin = user` manual entry, a note carrying playlist context, and two snapshots of one collection.
-- **Checkpoint 1a — hands-on local schema review.** Before any Managed PostgreSQL spend or droplet change, the user runs the app locally and browses the seeded model in Prisma Studio. Schema feedback lands here, at the cheapest possible moment.
-- Provision DigitalOcean Managed PostgreSQL and make the **first gated deployment** to `v2.playlistnotes.io` (§15).
+- **Checkpoint 1a — hands-on local schema review.** Before any droplet change, the user runs the app locally and browses the seeded model in Prisma Studio. Schema feedback lands here, at the cheapest possible moment.
+- Make the **first gated deployment** to `v2.playlistnotes.io` against a droplet-local database (§15).
 
 Exit criteria: a user can authenticate, a local user is created, migrations work from an empty database, CI passes, and the gated staging environment is live without affecting MKDb.
 
@@ -712,8 +712,9 @@ Initial deployment — concrete facts for this environment:
 - **GitHub Actions builds; the droplet only runs.** Use Next.js `output: 'standalone'` and rsync `.next/standalone`, `.next/static`, and `public`. A `next build` spike alongside MKDb and its local PostgreSQL risks the OOM killer taking out MKDb's database. Set Prisma `binaryTargets = ["native", "debian-openssl-3.0.x"]` so the CI-built query engine runs on Ubuntu.
 - Playlistnotes binds **`127.0.0.1:3001`** under its own pm2 process named `playlistnotes`, with its own nginx virtual host and certificate.
 - Copy MKDb's proven proxy configuration: forward `X-Real-IP`, `X-Forwarded-For`, and `X-Forwarded-Proto`, and set `trust proxy` to one hop, or rate limiting will see every request as `127.0.0.1`.
-- **DigitalOcean Managed PostgreSQL**, same region as the droplet, private-network host, droplet-only trusted sources, `sslmode=require` with DO's CA certificate, and a low Prisma `connection_limit` (the smallest node allows roughly 22 backends). If DO's PgBouncer pool is used, Prisma needs `DATABASE_URL` (pooled) **and** `DIRECT_URL` (direct) — migrations must not run through a transaction-mode pooler. Run `prisma migrate deploy` from the droplet, which is a trusted source.
-- DNS is at **GoDaddy**. `v2.playlistnotes.io` is a plain A record to the droplet. At cutover the apex needs care: GoDaddy offers no ALIAS/ANAME record, so the apex is most likely using domain forwarding to `www`; verify in the panel and replace with plain A records for apex and `www`, removing the forwarding. Certbot replaces Heroku ACM.
+- **A droplet-local PostgreSQL 16 database and role named `playlistnotes`**, reached over the local socket, entirely separate from MKDb's. Managed PostgreSQL was evaluated and rejected on cost while the product has no users; what it would have bought — automated, off-host, point-in-time-ish backups — must therefore be built and rehearsed instead, and that job is a pre-invite requirement, not a nicety. If Managed PostgreSQL is later adopted, Prisma needs `DATABASE_URL` (pooled) **and** `DIRECT_URL` (direct), because migrations must not run through a transaction-mode pooler.
+- DNS is at **GoDaddy**. `v2.playlistnotes.io` is a plain A record to the droplet, added alongside the existing records and touching none of them.
+- **The apex is not domain forwarding — that earlier assumption was wrong, corrected from the GoDaddy panel on August 10 2026.** `playlistnotes.io` holds two apex `A` records (`15.197.225.128`, `3.33.251.168`, Heroku's published apex addresses) and `www` is a `CNAME` to a `herokudns.com` target. Both apex `A` rows render with edit and delete disabled in the panel, which is what GoDaddy does for records owned by a Domain Connect integration; assume that integration must be disconnected before those rows can be repointed, and confirm it in the panel rather than discovering it during cutover. Cutover therefore replaces two apex `A` records and one `www` `CNAME`, not a forwarding rule. Certbot replaces Heroku ACM.
 - Keep user-uploaded binary assets out of the application filesystem; use object storage if attachments are later introduced.
 - Add a health endpoint that checks application readiness without leaking secrets.
 - Use structured logs and request correlation IDs.
@@ -756,7 +757,7 @@ Agreed August 10, 2026. These are release blockers, not backlog.
 | --- | --- |
 | **Apple Music track / single / EP / album import** | Metadata via the public iTunes API, no paid account required — verified enumerating a 21-track album unauthenticated. Link parsing plus lookup. |
 | **Apple Music playlist import** | The one Apple capability that *does* need a paid Apple Developer account (~$99/yr) and a signed developer token. Samah will set this up toward the end of the sprint. |
-| Playwright happy path and privacy path | Needs Clerk testing tokens configured in the dashboard. |
+| Playwright specs that must sign in | Deferred until **after** the Clerk → SuperTokens migration. Clerk testing tokens would work today, but the auth fixture is throwaway once the provider changes, and it is the fixture rather than the assertions that would be rewritten. Anonymous-visitor specs — landing, gate redirect, private content unavailable when signed out — do not depend on the provider and are written before it. |
 
 The point of shipping Apple Music alongside Spotify is not feature count: it is that **two independent providers, neither load-bearing, is the demonstration** that Playlistnotes is no longer a Spotify client. One provider is an integration; two is an architecture.
 

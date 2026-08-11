@@ -5,7 +5,7 @@ Durable handoff between sessions. Read this before relying on chat context. Upda
 **Last updated:** August 10, 2026
 **Current phase:** Phase 2 complete; Phase 3 (collections) largely complete ahead of schedule
 **Checkpoint 1a: PASSED.** The schema review produced two corrections, both now merged — `album_artists` was built, and the `Provider` enum was cut back to authoritative sources.
-**Next milestone:** Apple Music capture, then Managed PostgreSQL and the first gated deployment.
+**Next milestone:** wire album/playlist import and Apple Music capture into the UI; encrypted off-host backups; TLS once the DNS A record exists.
 
 **Progress: roughly 55%.** Estimated 25–35 hours remain, or 10–14 working days at 2–3 h/day — the week of August 24. That is over the original 15-day estimate, because album and playlist import were not in the plan.
 
@@ -18,7 +18,7 @@ Durable handoff between sessions. Read this before relying on chat context. Upda
 | Where does v2 code live? | The long-lived **`v2` branch** of `sama7/playlistnotes`. Not a new repo, not the `~/Documents` planning directory. |
 | Branch strategy | `main` **frozen** (v1 production). `develop` is a stale byte-identical duplicate of `main`; leave it untouched and delete after v2 ships. All work on `v2`. Short-lived `v2/<slice>` branches with PRs only for auth and privacy diffs. |
 | Staging hostname | `v2.playlistnotes.io` — gated, `noindex`, non-canonical. GoDaddy A record to the droplet. |
-| Production database | DigitalOcean Managed PostgreSQL, provisioned at the start. |
+| Production database | **Droplet-local PostgreSQL 16 with self-built encrypted off-host backups** — reversed from the original plan. Managed PostgreSQL was rejected on cost for a product with no users yet: ~$15–24/mo buys automated backups and failover that hourly encrypted dumps to Drive provide well enough at this stage. Revisit when there is a user base whose data loss would matter more than the spend, or when the droplet's single point of failure becomes the binding risk. The migration path is a `pg_dump`/`pg_restore` away, and nothing in the schema or Prisma config depends on which one is in use. |
 | Build strategy | **GitHub Actions builds; the droplet only runs.** Next.js `output: 'standalone'` + rsync. |
 | Timebox | ~15 working days at 2–3 focused hours/day. Full definition of done retained; CSV import not cut. |
 | v1 during the sprint | Stays running and **writable**. Code frozen. Not rebuilt. |
@@ -202,7 +202,19 @@ Every artist linked from its Spotify ID, order preserved, snapshot recorded.
 
 ### Still to do in Phase 2
 
-Playwright happy path and privacy path. Clerk needs testing tokens for automated sign-in, so this is the one part that needs setup rather than just writing.
+Playwright, **split by whether a spec needs to sign in**, because the auth provider is changing.
+
+Anything requiring authenticated sign-in is written **after** the SuperTokens
+migration, not before. Clerk testing tokens exist and would work, but wiring a
+Playwright auth fixture to a provider that is being removed before the invite is
+work with a known expiry date, and the fixture — not the assertions — is the part
+that would be thrown away.
+
+What does **not** depend on the provider is worth writing now: the landing page,
+the sign-in page rendering, the proxy gate redirecting an anonymous visitor away
+from `/notes`, and the anonymous half of the privacy path (a private note and a
+private collection are unavailable to a signed-out visitor). Those are real
+acceptance criteria and their specs survive the migration untouched.
 
 ## First droplet deployment — running, August 10 2026
 
@@ -266,7 +278,7 @@ never been written, and `prisma/` inside the artifact so the droplet can run
 | --- | --- |
 | **TLS for `v2.playlistnotes.io`** | **A GoDaddy A record → the droplet.** The vhost is installed and serving; certbot's HTTP-01 challenge cannot run until the name resolves. This is the only thing between here and a gated HTTPS staging host. |
 | Sanitized migration export | Only needed when legacy import is promoted into scope (post-core). `notes` in full plus `users` projected to `{user, lastModified}`. |
-| **Managed PostgreSQL** | ~$15–24/mo. The droplet-local database is fine for gated staging; Managed PG is required before real users. |
+| **Encrypted off-host backups** | Not blocked on the user — an agent task. Hourly `pg_dump`, encrypted **before** upload, pushed by rclone to the `playlistnotesapp@gmail.com` Drive; 24 hourly plus 30 daily; monitored and restore-rehearsed. This is what replaces Managed PostgreSQL's automated backups, so it must exist before the invite. |
 | **Apple Music playlists** | Release blocker. Needs an Apple Developer account (~$99/yr); tracks and albums need nothing. |
 | v1 screenshots | A browser session |
 | Branch protection on `main`; tag `v1-final` | Explicit approval — the only remote is `github` and `main` auto-deploys |
@@ -276,7 +288,7 @@ never been written, and `prisma/` inside the artifact so the droplet can run
 
 - **`main` auto-deploys to Heroku.** Any push there triggers a build. It would likely fail on EOL Node 18 and Heroku would keep the last successful release, so the blast radius is a broken build rather than an outage — but never push there.
 - **Droplet memory.** 2 GB shared with MKDb and its local PostgreSQL. This is why builds happen in CI. Verify headroom after the first deployment.
-- **Managed PostgreSQL + Prisma.** If DO's PgBouncer pool is used, migrations need `DIRECT_URL`; a transaction-mode pooler will break `migrate deploy`.
+- **The droplet is a single point of failure.** With Managed PostgreSQL rejected on cost, the database lives on the same 2 GB box as MKDb and the app. Losing the droplet loses everything not yet pushed off-host, which is exactly why the hourly encrypted backup job is a pre-invite requirement rather than a nicety. If Managed PostgreSQL is ever adopted, note that Prisma then needs `DATABASE_URL` (pooled) **and** `DIRECT_URL` (direct) — a transaction-mode pooler breaks `migrate deploy`.
 - **Apex DNS at cutover.** GoDaddy has no ALIAS/ANAME record, so the apex is probably using domain forwarding to `www`. Verify in the panel before moving traffic.
 
 ## Next vertical slice
