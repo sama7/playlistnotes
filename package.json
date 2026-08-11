@@ -21,7 +21,9 @@
     "db:studio": "prisma studio",
     "db:seed": "tsx prisma/seed.ts",
     "db:reset:local": "tsx scripts/db-reset-local.ts",
-    "postinstall": "prisma generate"
+    "postinstall": "prisma generate",
+    "smoke": "node scripts/smoke.js",
+    "start:prod": "node scripts/start-standalone.cjs"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

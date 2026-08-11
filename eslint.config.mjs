@@ -13,6 +13,13 @@ const eslintConfig = [
   },
   ...coreWebVitals,
   ...typescriptConfig,
+  {
+    // The production entry point must be CommonJS: Next's generated
+    // `server.js` is CommonJS, and the wrapper has to `require` it in the same
+    // module system. `.cjs` says so explicitly, so `require` is correct there.
+    files: ["**/*.cjs"],
+    rules: { "@typescript-eslint/no-require-imports": "off" },
+  },
 ];
 
 export default eslintConfig;

@@ -144,6 +144,44 @@ jobs:
           mkdir -p artifact/.next
           cp -r .next/static artifact/.next/static
           if [ -d public ]; then cp -r public artifact/public; fi
+          # The production entry point. It carries environment invariants that
+          # would otherwise live in a pm2 flag and be lost on the next restart.
+          mkdir -p artifact/scripts
+          cp scripts/start-standalone.cjs scripts/smoke.js artifact/scripts/
+          # Migrations travel with the artifact so the droplet can run
+          # `prisma migrate deploy` without a checkout of the repository.
+          cp -r prisma artifact/prisma
+
+      # Boot the packaged artifact and make real requests to it. Every check
+      # before this point passes against source; this is the only one that
+      # proves the thing we actually ship can serve a page. It was added after a
+      # green build shipped an artifact on which every rendering route hung.
+      - name: Smoke test the packaged artifact
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/playlistnotes_smoke
+          DIRECT_URL: postgresql://postgres:postgres@localhost:5432/playlistnotes_smoke
+          APP_BASE_URL: http://127.0.0.1:3001
+          NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ vars.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
+          # Anonymous requests never reach Clerk's API — the key only has to be
+          # present for the middleware to construct its client. A real secret is
+          # therefore not needed, and deliberately not used, in CI.
+          CLERK_SECRET_KEY: sk_test_0000000000000000000000000000000000000000
+        run: |
+          docker run -d --name smoke-pg -e POSTGRES_PASSWORD=postgres \
+            -e POSTGRES_DB=playlistnotes_smoke -p 5432:5432 postgres:16
+          for i in $(seq 1 30); do
+            docker exec smoke-pg pg_isready -U postgres && break
+            sleep 2
+          done
+          npx prisma migrate deploy
+          node artifact/scripts/start-standalone.cjs &
+          echo $! > /tmp/smoke.pid
+          for i in $(seq 1 30); do
+            curl -sf -o /dev/null http://127.0.0.1:3001/api/health && break
+            sleep 2
+          done
+          node scripts/smoke.js http://127.0.0.1:3001
+          kill "$(cat /tmp/smoke.pid)" || true
 
       - uses: actions/upload-artifact@v4
         with:
