@@ -22,6 +22,22 @@ const nextConfig: NextConfig = {
           { key: "X-Content-Type-Options", value: "nosniff" },
           { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
           { key: "X-Frame-Options", value: "DENY" },
+          /**
+           * nginx already 301s HTTP to HTTPS; HSTS is what closes the gap the
+           * redirect leaves open, since the first request still travels in the
+           * clear. Browsers ignore this header when it arrives over HTTP, so it
+           * is safe to send unconditionally.
+           *
+           * Deliberately without `includeSubDomains` and without `preload`:
+           * both commit sibling hostnames — and, for preload, a hardcoded
+           * browser list that is slow to undo — on behalf of an apex that is
+           * still v1 on Heroku. Those are decisions for cutover, not for a
+           * staging host.
+           */
+          {
+            key: "Strict-Transport-Security",
+            value: "max-age=31536000",
+          },
         ],
       },
     ];
