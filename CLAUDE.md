@@ -115,9 +115,10 @@ Follow the detailed phase plan and exit criteria in `AGENTS.md` §12 (~15 workin
 
 ### Phase C - secure note vertical slice
 
-- Parse a Spotify track URL without OAuth.
+- Parse a Spotify or Apple Music track URL without user OAuth.
 - Resolve or create a recording with a Playlistnotes UUID.
-- Fall back to user-supplied title/artist when oEmbed fails.
+- **Consult the database before any provider call.** This is the rate-limit guarantee, and it is asserted by counting calls in `no-network-on-known-track.test.ts` rather than assumed.
+- Prefer the provider API (Spotify Client Credentials, Apple's public iTunes lookup) so artists, album and ISRC are linked from identifiers; fall back to oEmbed, then to user-supplied title/artist. A single pasted track must produce the same row as importing the album containing it — both go through `lib/music/persist-track.ts`.
 - Create/edit/delete a private note.
 - Support an optional Playlistnotes collection-item context so notes about the same recording in different playlists do not lose their meaning.
 - Enforce ownership in server queries.
@@ -179,11 +180,19 @@ npm run typecheck
 npm run lint
 npm test
 npm run test:integration
-npm run test:e2e
 npm run build
 npx prisma migrate status
 npm run db:reset:local     # guarded; proves migration from empty
+npm run smoke <url>        # real requests to a running server
+E2E_BASE_URL=<url> npm run test:e2e
 ```
+
+**A green build proves less than it appears to.** On 2026-08-10 the whole suite
+passed, `next build` succeeded, pm2 reported `online`, and every rendering route
+hung for 30 seconds before a 500. Nothing that runs before a server boots can
+see that class of failure, so `npm run smoke` — which makes real requests to the
+built artifact — runs in CI against the package it is about to upload, and again
+after every deploy. Never report a deployment as working without it.
 
 **Never run a bare `npx prisma migrate reset`.** It inherits whatever `DATABASE_URL` is configured. `db:reset:local` must fail closed unless the parsed URL's host is local or CI, the database name matches `*_dev` or `*_test`, and `NODE_ENV` is not `production`. Production only ever runs `prisma migrate deploy`. Integration and E2E suites run against disposable local or CI databases; a deployed environment gets narrow smoke tests with dedicated accounts only.
 

@@ -2,12 +2,19 @@
 
 Durable handoff between sessions. Read this before relying on chat context. Update it after every phase and before ending a substantial session.
 
-**Last updated:** August 10, 2026
-**Current phase:** Phase 2 complete; Phase 3 (collections) largely complete ahead of schedule
+**Last updated:** August 11, 2026
+**Current phase:** Phases 2 and 3 complete; deployed and serving over HTTPS at https://v2.playlistnotes.io. Phase 4 (sharing, search, polish) is next.
 **Checkpoint 1a: PASSED.** The schema review produced two corrections, both now merged — `album_artists` was built, and the `Provider` enum was cut back to authoritative sources.
-**Next milestone:** wire album/playlist import and Apple Music capture into the UI; encrypted off-host backups; TLS once the DNS A record exists.
+**Next milestone:** the collections UI — browsing an imported collection and writing a note against a track *in playlist context*, which is the thing v1 was actually for and the last core capability with no surface.
 
-**Progress: roughly 55%.** Estimated 25–35 hours remain, or 10–14 working days at 2–3 h/day — the week of August 24. That is over the original 15-day estimate, because album and playlist import were not in the plan.
+**Progress: roughly 72%.** Estimated 14–20 hours remain to a public release, or
+6–9 working days at 2–3 h/day. That is past the original 15-day estimate because
+album and playlist import, full Apple Music support, and the SuperTokens
+migration were all added to scope after it was written.
+
+The remaining work is unusually well understood: no unknowns of the kind that
+produced the 30-second proxy hang, and every blocked item is a credential or an
+account rather than a design question.
 
 ---
 
@@ -125,7 +132,7 @@ Complete apart from Playwright. **100 tests: 52 unit, 48 integration.**
 | Link parsing | `lib/music/spotify/parse-link.ts` | The security boundary. Refuses non-Spotify hosts, look-alikes, embedded credentials, link-local and loopback addresses, and non-http schemes — before any network call is contemplated. Playlists are *recognised* so they can be refused. |
 | oEmbed | `lib/music/spotify/oembed.ts` | Best-effort by construction; every failure returns `null`. Takes a kind and an id, never a URL, so it cannot be pointed at an arbitrary host. |
 | Resolution | `lib/music/resolve-recording.ts` | Exact `(provider, provider_id)` only. Concurrent capture yields one recording via the unique index; merges are followed rather than returned. |
-| Capture | `lib/music/capture.ts` | Ties the three together. Uses no Spotify credential of any kind. |
+| Capture | `lib/music/capture-track.ts` | Provider-neutral. Database first, then the provider API, then oEmbed, then the user. Superseded `lib/music/capture.ts`, which was oEmbed-only. |
 | Notes | `lib/notes/service.ts` | `ownerId` is always the first argument and always from the session. Scoping is in the WHERE clause, not a post-fetch check. |
 | UI | `app/notes/`, `app/n/[token]/` | Capture form, note list with inline edit, share/rotate/unpublish, anonymous share page. |
 
@@ -200,21 +207,22 @@ Every artist linked from its Spotify ID, order preserved, snapshot recorded.
 - **`.githooks/pre-push`** runs typecheck, lint, unit and integration tests and blocks the push on failure. Enable per clone with `git config core.hooksPath .githooks`. It exists because a push went out with a failing test after a shell chain used `;` instead of `&&`. Proven to fail closed.
 - **No `Co-Authored-By` trailers.** Commits name Samah alone; the history was rewritten to remove 26 of them.
 
-### Still to do in Phase 2
+### Playwright — sequenced around the auth migration
 
-Playwright, **split by whether a spec needs to sign in**, because the auth provider is changing.
+Ten anonymous-visitor specs exist and pass against the deployed staging host
+(`tests/e2e/anonymous.spec.ts`). They target exactly what unit and integration
+tests could not see: a page component leaking private notes, and every rendering
+route hanging behind a proxy gate that worked.
 
-Anything requiring authenticated sign-in is written **after** the SuperTokens
-migration, not before. Clerk testing tokens exist and would work, but wiring a
-Playwright auth fixture to a provider that is being removed before the invite is
-work with a known expiry date, and the fixture — not the assertions — is the part
-that would be thrown away.
+Specs that must **sign in** are deferred until after the Clerk → SuperTokens
+migration. Clerk testing tokens would work today, but the auth fixture is
+throwaway once the provider changes, and it is the fixture rather than the
+assertions that gets rewritten.
 
-What does **not** depend on the provider is worth writing now: the landing page,
-the sign-in page rendering, the proxy gate redirecting an anonymous visitor away
-from `/notes`, and the anonymous half of the privacy path (a private note and a
-private collection are unavailable to a signed-out visitor). Those are real
-acceptance criteria and their specs survive the migration untouched.
+Not wired into CI: a real browser follows Clerk's development handshake out to
+accounts.dev, and CI holds only a placeholder secret, so the run would be flaky
+for reasons unrelated to the app. The packaged-artifact smoke test guards CI
+instead. SuperTokens removes the handshake and this can then move into CI.
 
 ## First droplet deployment — running, August 10 2026
 
@@ -272,13 +280,64 @@ Also added: the `/api/health` route the proxy already whitelisted but which had
 never been written, and `prisma/` inside the artifact so the droplet can run
 `migrate deploy` without a checkout.
 
+## August 11 2026 — HTTPS, both providers, and backups
+
+### Live and gated
+
+`https://v2.playlistnotes.io` serves over TLS. HTTP 301s to HTTPS, HSTS is set
+(without `includeSubDomains` or `preload` — both would commit an apex that is
+still v1 on Heroku), `X-Robots-Tag: noindex` is present, and MKDb was verified
+healthy after every step. Certificate expires 2026-11-09 and renews
+automatically.
+
+### Capture now uses the provider APIs
+
+`fetchTrack` had been written, tested, and **never called**. Pasting a Spotify
+track link still went through oEmbed, which returns a title and no artist field
+at all — so every first paste of a new track stopped to ask the user to type the
+artist, and the row it wrote linked nothing: no artists, no album, no ISRC. The
+same song imported as part of an album got the full treatment, because
+collection import had its own richer path.
+
+The entity-linking logic moved out of `import-collection.ts` into
+`persist-track.ts`, and both doors now go through it. A pasted track produces
+exactly the row the album import would.
+
+**Apple Music is wired end to end for the first time** — track capture and album
+import through the public iTunes lookup, which needs no developer account.
+Playlists and full artist relationships need the catalog API and its signed
+token; the refusal says so rather than failing vaguely.
+
+The independence invariant is unchanged and better tested:
+`no-spotify-credentials.test.ts` now strips the optional credential for its whole
+duration, so it behaves identically on a laptop that has one. It previously would
+have silently changed code paths.
+`no-network-on-known-track.test.ts` counts **both** provider paths, since
+counting one would let the other escape the guarantee on exactly the machines
+where it is active.
+
+### Backups exist and have been restored
+
+Dropping Managed PostgreSQL moved its automated backups onto us, and until now
+nothing did that job. Hourly encrypted dumps (24 hourly + 30 daily), verified
+complete rather than truncated before being kept, encrypted before anything
+leaves the box, scheduled from `/etc/cron.d/` so MKDb's crontab is never opened.
+
+**Rehearsed 2026-08-11:** a probe row was written, backed up, and recovered into
+a scratch database — 17 tables, probe row present. Also verified: the ciphertext
+holds no readable SQL, a wrong passphrase fails with a clear message instead of
+half-restoring, and restoring over the live database is refused without an
+explicit flag. `docs/runbook.md` has the procedures.
+
+**Test totals: 191.** 93 unit, 88 integration, 10 Playwright.
+
 ## Not yet done — blocked on the user
 
 | Blocked item | Needs |
 | --- | --- |
-| **TLS for `v2.playlistnotes.io`** | **A GoDaddy A record → the droplet.** The vhost is installed and serving; certbot's HTTP-01 challenge cannot run until the name resolves. This is the only thing between here and a gated HTTPS staging host. |
+| **Backup passphrase is single-copy** | `/root/.pn-db-backup-pass` on the droplet — the same place as the backups it decrypts. Copy it into the password manager. Without it every archive is scrap. |
+| **Off-host backup copies** | An rclone remote for the `playlistnotesapp@gmail.com` Drive needs a browser OAuth grant. Until it exists, backups survive a bad migration but not a lost droplet, and the script warns on every run. |
 | Sanitized migration export | Only needed when legacy import is promoted into scope (post-core). `notes` in full plus `users` projected to `{user, lastModified}`. |
-| **Encrypted off-host backups** | Not blocked on the user — an agent task. Hourly `pg_dump`, encrypted **before** upload, pushed by rclone to the `playlistnotesapp@gmail.com` Drive; 24 hourly plus 30 daily; monitored and restore-rehearsed. This is what replaces Managed PostgreSQL's automated backups, so it must exist before the invite. |
 | **Apple Music playlists** | Release blocker. Needs an Apple Developer account (~$99/yr); tracks and albums need nothing. |
 | v1 screenshots | A browser session |
 | Branch protection on `main`; tag `v1-final` | Explicit approval — the only remote is `github` and `main` auto-deploys |
@@ -291,8 +350,23 @@ never been written, and `prisma/` inside the artifact so the droplet can run
 - **The droplet is a single point of failure.** With Managed PostgreSQL rejected on cost, the database lives on the same 2 GB box as MKDb and the app. Losing the droplet loses everything not yet pushed off-host, which is exactly why the hourly encrypted backup job is a pre-invite requirement rather than a nicety. If Managed PostgreSQL is ever adopted, note that Prisma then needs `DATABASE_URL` (pooled) **and** `DIRECT_URL` (direct) — a transaction-mode pooler breaks `migrate deploy`.
 - **Apex DNS at cutover.** GoDaddy has no ALIAS/ANAME record, so the apex is probably using domain forwarding to `www`. Verify in the panel before moving traffic.
 
-## Next vertical slice
+## What is left before a public release
 
-Replace `/` — it is still the Checkpoint 1a schema inspector, a development tool
-standing where the landing page belongs — and wire album/playlist import and
-Apple capture into the capture UI. Neither needs anything from the user.
+| # | Work | Est. | Blocked? |
+| --- | --- | --- | --- |
+| 1 | **Collections UI** — browse an imported collection, and write a note against a track *in playlist context*. The domain layer and schema (`collection_items`, `notes.collection_item_id`) are done; there is no surface. This is what v1 was actually for. | 3–4 h | no |
+| 2 | **Sharing** — unlisted/public visibility for collections, with a "what viewers see" preview. Notes already have it. Must prove publishing a collection never publishes the private notes inside it. | 2–3 h | no |
+| 3 | **User-scoped note search** — `lib/notes/search.ts` exists and is weighted and owner-scoped; it has no UI. | 1–2 h | no |
+| 4 | **Clerk → SuperTokens** — 7-day non-sliding sessions plus passkeys. Touches `lib/auth.ts`, `proxy.ts`, the sign-in/up routes, and the `users.auth_subject` upsert. Everything downstream is provider-agnostic already. | 3–5 h | no |
+| 5 | **Signed-in Playwright specs** — happy path and cross-user privacy, after (4). Then move the whole suite into CI, which the Clerk handshake currently makes flaky. | 1–2 h | after (4) |
+| 6 | **CSV import** — Exportify-compatible. Kept in scope deliberately. Value is lower than it was: link import now covers albums and public playlists, so this is for private and editorial playlists, which genuinely cannot be read any other way. | 2–3 h | no |
+| 7 | **Tags** — schema exists, no UI. | 1 h | no |
+| 8 | **Responsive and accessibility pass**, then invite ~10 testers. | 1–2 h | no |
+
+**Not required for release:** Apple Music playlists (needs an Apple Developer
+account), legacy import of the 33 v1 notes, Sentry/PostHog, artist and album
+pages, Last.fm.
+
+**Required before real users write anything they would miss:** the backup
+passphrase copied off the droplet, and the rclone Drive remote authorised. Both
+are in the blocked table above.

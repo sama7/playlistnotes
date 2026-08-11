@@ -188,7 +188,7 @@ Recommended stack:
 - Clerk for managed authentication, using email one-time codes and Google
 - Zod for server-boundary validation
 - Vitest and React Testing Library for unit/component tests
-- Playwright for browser-level acceptance tests
+- Playwright for browser-level acceptance tests, plus `scripts/smoke.js` for post-deploy verification of the built artifact — the only check that can observe a server which starts, reports ready, and then fails to serve
 - Sentry for application errors when credentials are supplied
 - PostHog for a minimal product-event taxonomy when credentials are supplied
 - GitHub Actions for typecheck, lint, test, migration validation, and production build
