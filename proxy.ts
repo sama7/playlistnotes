@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
+import { INVITE_COOKIE, hasValidInviteCookie, inviteGateEnabled } from "@/lib/invite";
 import {
   BREADCRUMB_MAX_AGE_SECONDS,
   LAST_SEEN_COOKIE,
@@ -24,12 +25,50 @@ const isPublicRoute = createRouteMatcher([
   "/sign-in(.*)",
   "/sign-up(.*)",
   "/api/health",
+  // The invite gate itself. Without this the two guards fight: the gate sends an
+  // uninvited visitor here, and auth.protect() sends them back to sign-in,
+  // which the gate bounces to /invite — a redirect loop that locks everyone out.
+  "/invite",
   // Deliberate shares. These read only what visibility permits.
   "/n/(.*)", // unlisted or public notes, addressed by share token
   "/c/(.*)", // unlisted or public collections
 ]);
 
+/**
+ * Routes that stay reachable even when the invite gate is closed.
+ *
+ * Share links are the important entry: someone who was sent a public note has
+ * no invite code and should not need one. The gate exists to stop *account
+ * creation* by passers-by, not to hide content its owner deliberately
+ * published. Health stays open so monitoring does not need a cookie.
+ */
+const bypassesInviteGate = createRouteMatcher([
+  "/invite",
+  "/api/health",
+  "/n/(.*)",
+  "/c/(.*)",
+]);
+
 export default clerkMiddleware(async (auth, request) => {
+  /**
+   * The gate runs BEFORE authentication, so an uninvited visitor never reaches
+   * the sign-up form at all. Checking it after would let anyone create an
+   * account and only then be told the site is private.
+   *
+   * An already-signed-in user is let through: they were invited once, and
+   * revoking the code should not lock out people already using the product.
+   */
+  if (inviteGateEnabled() && !bypassesInviteGate(request)) {
+    const { userId } = await auth();
+    const cookie = request.cookies.get(INVITE_COOKIE)?.value;
+
+    if (!userId && !(await hasValidInviteCookie(cookie))) {
+      const invite = new URL("/invite", request.url);
+      invite.searchParams.set("next", request.nextUrl.pathname + request.nextUrl.search);
+      return NextResponse.redirect(invite);
+    }
+  }
+
   if (!isPublicRoute(request)) {
     await auth.protect();
   }

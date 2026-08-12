@@ -113,6 +113,20 @@ for (const [name, required, ok, expectation] of RULES) {
 }
 
 /**
+ * The invite gate fails open when it is asked for without a code. That is the
+ * right runtime behaviour — refusing to boot would take the site down over a
+ * doormat — but it must never be silent, because "the host is invite-gated"
+ * would then be an untrue claim in the place someone would trust it.
+ */
+if (env.REQUIRE_INVITE_CODE === "true" && !(env.INVITE_CODE ?? "").trim()) {
+  console.log(
+    "\n  MISCONFIGURED REQUIRE_INVITE_CODE is true but INVITE_CODE is empty. " +
+      "The gate is OFF and anyone with the URL can sign up.",
+  );
+  failed++;
+}
+
+/**
  * Apple's three variables are useless individually. A partial set means someone
  * copied some and not others, which is precisely the state the first deployment
  * was left in — and it reads as "Apple is not configured" rather than as the
