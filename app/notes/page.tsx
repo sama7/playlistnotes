@@ -9,6 +9,9 @@ import { NoteRow } from "./note-row";
 
 export const dynamic = "force-dynamic";
 
+// Renders as "Your notes · TrackJot" through the template in app/layout.tsx.
+export const metadata = { title: "Your notes" };
+
 /**
  * The notes page, with search.
  *

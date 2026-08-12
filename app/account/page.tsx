@@ -11,6 +11,9 @@ import { requireUser } from "@/lib/auth";
  */
 export const dynamic = "force-dynamic";
 
+// Renders as "Account · TrackJot" through the template in app/layout.tsx.
+export const metadata = { title: "Account" };
+
 export default async function AccountPage() {
   const user = await requireUser();
 

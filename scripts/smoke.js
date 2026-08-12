@@ -28,22 +28,36 @@ const BASE = (process.argv[2] || process.env.SMOKE_BASE_URL || "http://127.0.0.1
 const TIMEOUT_MS = 15_000;
 
 /**
- * A hang is the signature failure here, so slowness is itself a result.
+ * A hang is the signature failure here, so slowness is itself a result, and a
+ * rendering page must return a non-empty body — a broken render can still
+ * produce a 200 with nothing in it.
  *
- * Public routes additionally require a non-empty body. A rendering failure can
- * still produce a 200 with nothing in it, and "the page came back" is the claim
- * being made.
+ * A gated host redirects the public pages to /invite, and that redirect is
+ * itself proof the app is serving — the failure this script exists to catch was
+ * a 30-second hang, not a redirect. So a public page may either render or bounce
+ * to the gate, and the gate page must render either way. Demanding a 200 on `/`
+ * would have made enabling the invite gate look like an outage.
  */
+const gateRedirect = (status, location) =>
+  (status === 307 || status === 302) && (location ?? "").includes("/invite");
+
 const checks = [
   {
     path: "/",
-    expect: (s, len) => s === 200 && len > 0,
-    describe: "200 with a body (public landing renders)",
+    expect: (s, len, loc) => (s === 200 && len > 0) || gateRedirect(s, loc),
+    describe: "renders, or redirects to the invite gate",
   },
   {
     path: "/sign-in",
-    expect: (s, len) => s === 200 && len > 0,
-    describe: "200 with a body (sign-in renders)",
+    expect: (s, len, loc) => (s === 200 && len > 0) || gateRedirect(s, loc),
+    describe: "renders, or redirects to the invite gate",
+  },
+  {
+    path: "/invite",
+    // 200 when the gate is on; 307 to / when it is off, since the page then has
+    // no reason to exist. Both are correct; a 500 or a hang is not.
+    expect: (s) => s === 200 || s === 307,
+    describe: "the gate page answers",
   },
   { path: "/api/health", expect: (s) => s === 200, describe: "200 (database reachable)" },
   {
@@ -71,7 +85,12 @@ async function probe(path) {
       signal: controller.signal,
     });
     const body = await response.text();
-    return { status: response.status, length: body.length, ms: Date.now() - started };
+    return {
+      status: response.status,
+      length: body.length,
+      location: response.headers.get("location"),
+      ms: Date.now() - started,
+    };
   } catch (error) {
     return {
       status: 0,
@@ -89,8 +108,8 @@ async function main() {
   let failed = 0;
 
   for (const check of checks) {
-    const { status, length, ms, error } = await probe(check.path);
-    const ok = check.expect(status, length);
+    const { status, length, location, ms, error } = await probe(check.path);
+    const ok = check.expect(status, length, location);
     if (!ok) failed++;
     const actual = status === 0 ? `no response (${error})` : `${status} ${length}B`;
     console.log(

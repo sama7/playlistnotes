@@ -1,4 +1,6 @@
+import { existsSync } from "node:fs";
 import { defineConfig, devices } from "@playwright/test";
+import { STORAGE_STATE } from "./tests/e2e/support/global-setup";
 
 /**
  * Browser-level acceptance tests.
@@ -50,7 +52,17 @@ export default defineConfig({
     trace: "on-first-retry",
   },
 
-  projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
+  projects: [
+    {
+      name: "chromium",
+      use: {
+        ...devices["Desktop Chrome"],
+        // Written by global setup after passing the invite gate. Absent when the
+        // gate is off or no code was supplied, which is why it is optional.
+        storageState: existsSync(STORAGE_STATE) ? STORAGE_STATE : undefined,
+      },
+    },
+  ],
 
   // Skipped when E2E_BASE_URL is set, so the same specs can run against a
   // deployed host without trying to boot a second server underneath it.

@@ -5,6 +5,9 @@ import { CsvImportForm } from "./import-form";
 
 export const dynamic = "force-dynamic";
 
+// Renders as "Your collections · TrackJot" through the template in app/layout.tsx.
+export const metadata = { title: "Your collections" };
+
 export default async function CollectionsPage() {
   const user = await requireUser();
 
