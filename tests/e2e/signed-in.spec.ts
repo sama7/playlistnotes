@@ -217,6 +217,27 @@ test.describe("accessibility of the signed-in surfaces", () => {
     expect(results.violations).toEqual([]);
   });
 
+  /**
+   * Repeated controls in a list need distinguishable accessible names.
+   * Listing the buttons on a fifty-track playlist and hearing "Add a note"
+   * fifty times is technically conformant and practically useless.
+   */
+  test("per-track controls name the track they belong to", async ({ page }) => {
+    await signUp(page, testEmail("a11y-labels"));
+    await writeNote(page, { ...CN_TOWER, body: "seed a collection to annotate" });
+
+    await page.goto("/collections");
+    const firstCollection = page.locator("a[href^='/collections/']").first();
+    if (!(await firstCollection.isVisible().catch(() => false))) {
+      test.skip(true, "No collection to inspect; import is not exercised here.");
+      return;
+    }
+    await firstCollection.click();
+
+    const addButtons = page.getByRole("button", { name: /^Add a note about .+/ });
+    expect(await addButtons.count()).toBeGreaterThan(0);
+  });
+
   test("every control on the notes page is keyboard reachable", async ({ page }) => {
     await signUp(page, testEmail("a11y-keys"));
     await writeNote(page, { ...CN_TOWER, body: "reachable by keyboard alone" });

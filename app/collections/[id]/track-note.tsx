@@ -46,18 +46,38 @@ export function TrackNote({
           <>
             <p className="track-note-body">{note.body}</p>
             <div className="row">
-              <button type="button" className="linkish" onClick={() => setOpen(true)}>
+              {/*
+                The visible label stays short, but the accessible name carries
+                the track. A screen-reader user listing the buttons on a
+                fifty-track playlist would otherwise hear "Edit" fifty times
+                with nothing to tell them apart.
+              */}
+              <button
+                type="button"
+                className="linkish"
+                aria-label={`Edit your note about ${trackTitle}`}
+                onClick={() => setOpen(true)}
+              >
                 Edit
               </button>
               <form action={deleteCollectionNoteAction.bind(null, collectionId, note.id)}>
-                <button type="submit" className="linkish danger-text">
+                <button
+                  type="submit"
+                  className="linkish danger-text"
+                  aria-label={`Delete your note about ${trackTitle}`}
+                >
                   Delete
                 </button>
               </form>
             </div>
           </>
         ) : (
-          <button type="button" className="linkish" onClick={() => setOpen(true)}>
+          <button
+            type="button"
+            className="linkish"
+            aria-label={`Add a note about ${trackTitle}`}
+            onClick={() => setOpen(true)}
+          >
             Add a note
           </button>
         )}
