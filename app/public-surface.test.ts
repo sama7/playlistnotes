@@ -39,3 +39,33 @@ describe("public routes", () => {
     });
   }
 });
+
+/**
+ * Link previews are a disclosure channel that `noindex` does not cover.
+ *
+ * A chat or social client fetching a pasted URL to build a preview card ignores
+ * robots directives entirely. So whatever a shared page puts in its metadata is
+ * shown to every group chat the link is forwarded to — an audience the person
+ * who shared it never chose. The share pages therefore carry static, generic
+ * metadata, and this asserts it stays that way.
+ */
+describe("shared pages leak nothing through their link preview", () => {
+  for (const file of ["n/[token]/page.tsx", "c/[token]/page.tsx"]) {
+    it(`${file} builds its metadata from constants, not from the record`, async () => {
+      const source = await readFile(`${appDir}${file}`, "utf8");
+
+      // A generateMetadata function receives the token and could reach the
+      // note; a static export cannot. The distinction is the whole guarantee.
+      expect(source).not.toContain("generateMetadata");
+      expect(source).toMatch(/export const metadata: Metadata = \{/);
+
+      // And the static block must not interpolate anything.
+      const block = source.slice(
+        source.indexOf("export const metadata"),
+        source.indexOf("export default"),
+      );
+      expect(block).not.toContain("${");
+      expect(block).toContain("robots");
+    });
+  }
+});

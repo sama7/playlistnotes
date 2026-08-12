@@ -16,8 +16,26 @@ export const dynamic = "force-dynamic";
  * filter is something a future query can forget to apply; an absent relation is
  * not.
  */
+/**
+ * Metadata for a deliberately shared note.
+ *
+ * Static, generic, and containing NOTHING from the note. This is not a
+ * stylistic choice: `noindex` stops search engines, and it does not stop the
+ * chat, messaging and social clients that fetch a pasted URL to build a preview
+ * card. Whatever appears in these fields is shown to every group chat the link
+ * is forwarded to, in a way the person who shared it never approved.
+ *
+ * So the unfurl says the product's name and nothing else. Anyone who opens the
+ * link sees the note; anyone who merely sees it pasted does not.
+ */
 export const metadata: Metadata = {
+  title: "A shared collection",
+  description: "Someone shared a collection on TrackJot.",
   robots: { index: false, follow: false },
+  openGraph: {
+    title: "A shared collection on TrackJot",
+    description: "Someone shared a collection on TrackJot.",
+  },
 };
 
 export default async function SharedCollectionPage({

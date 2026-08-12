@@ -29,6 +29,16 @@ const isPublicRoute = createRouteMatcher([
   // uninvited visitor here, and auth.protect() sends them back to sign-in,
   // which the gate bounces to /invite — a redirect loop that locks everyone out.
   "/invite",
+  /**
+   * Machine-readable surfaces. A crawler has no session and an unfurling chat
+   * client has no cookies, so protecting these does not hide anything — it just
+   * serves them a sign-in redirect instead of the file. `/opengraph-image` has
+   * no extension, and `.txt`/`.xml` are not in the static-file exclusion below,
+   * so all three reached the auth guard and 307'd.
+   */
+  "/robots.txt",
+  "/sitemap.xml",
+  "/opengraph-image",
   // Deliberate shares. These read only what visibility permits.
   "/n/(.*)", // unlisted or public notes, addressed by share token
   "/c/(.*)", // unlisted or public collections
@@ -47,6 +57,12 @@ const bypassesInviteGate = createRouteMatcher([
   "/api/health",
   "/n/(.*)",
   "/c/(.*)",
+  // Same reasoning as above: these have no user to invite. The gate stops
+  // account creation, and a robots file has never created an account.
+  "/robots.txt",
+  "/sitemap.xml",
+  "/opengraph-image",
+  "/manifest.webmanifest",
 ]);
 
 export default clerkMiddleware(async (auth, request) => {

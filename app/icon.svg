@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="TrackJot">
+  <!--
+    The two halves of the name, at a size where an abstract mark would turn to
+    mush: a straight "track" line, and a jot stroke crossing it by hand. Legible
+    at 16px, which rules out anything more literal like a record groove.
+  -->
+  <rect width="64" height="64" rx="14" fill="#16161a"/>
+  <line x1="14" y1="38" x2="50" y2="38" stroke="#ececf0" stroke-width="5" stroke-linecap="round"/>
+  <path d="M20 44 C27 24, 35 20, 44 27" fill="none" stroke="#93a0ff" stroke-width="5"
+        stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

@@ -12,8 +12,26 @@ export const dynamic = "force-dynamic";
  * `noindex` regardless of the global setting. Nothing here reveals the note's
  * UUID, its owner's identity, or anything the owner did not publish.
  */
+/**
+ * Metadata for a deliberately shared note.
+ *
+ * Static, generic, and containing NOTHING from the note. This is not a
+ * stylistic choice: `noindex` stops search engines, and it does not stop the
+ * chat, messaging and social clients that fetch a pasted URL to build a preview
+ * card. Whatever appears in these fields is shown to every group chat the link
+ * is forwarded to, in a way the person who shared it never approved.
+ *
+ * So the unfurl says the product's name and nothing else. Anyone who opens the
+ * link sees the note; anyone who merely sees it pasted does not.
+ */
 export const metadata: Metadata = {
+  title: "A shared note",
+  description: "Someone shared a note on TrackJot.",
   robots: { index: false, follow: false },
+  openGraph: {
+    title: "A shared note on TrackJot",
+    description: "Someone shared a note on TrackJot.",
+  },
 };
 
 export default async function SharedNotePage({
