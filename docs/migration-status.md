@@ -530,13 +530,30 @@ Caught on deploy: `/robots.txt`, `/sitemap.xml` and `/opengraph-image` were all
 307ing to sign-in, because they have no extension or one outside the static
 exclusion and so reached the auth guard.
 
-### CI e2e — now a reproduction, not a hunch
+### The browser suite runs in CI
 
-Verified locally under exact CI conditions: with a placeholder Clerk secret a
-real browser follows the development handshake, returns with a handshake token,
-and the server **500s** verifying it. The suite cannot run in CI without the
-development secret key. Playwright's global setup now fails soft on the missing
-token so the failure is explicable rather than an aborted run.
+The secret was added, so the `e2e` job exists: it downloads the artifact the
+`build` job produced, migrates a disposable PostgreSQL, boots it, and runs all
+29 specs against it. Verified by simulating the job locally first — 29 passed
+against the packaged artifact.
+
+Why it needed a real key rather than a placeholder, established by reproduction:
+a real browser follows Clerk's development handshake, returns with a handshake
+token, and the server **500s** verifying it against a fake secret. The job
+refuses a `sk_live_` key outright, because the suite signs up real accounts.
+
+`scripts/clean-test-users.mjs` deletes them afterwards, and runs even when the
+suite fails, since a failed run creates accounts too. It only ever deletes
+addresses containing Clerk's reserved `+clerk_test` marker and refuses a
+production key with no override. Verified both ways: it removed 51 accumulated
+test accounts and left the one real account untouched.
+
+### v2.playlistnotes.io is retired
+
+Kept as a redirect at first, on the general principle that share links are
+durable. That principle did not apply: there are no users, no notes, and no
+links in the wild. The vhost and certificate are deleted; the DNS record can go
+whenever convenient.
 
 ### Rebrand loose ends
 
@@ -575,7 +592,6 @@ both DKIM selectors, SPF, `autodiscover`, and the `onmicrosoft` verification TXT
 | --- | --- | --- | --- |
 | 1 | **Clerk production instance for `trackjot.com`** — the current keys belong to a development instance whose allowed origin is still the old host. Sign-in works today because Clerk development instances are permissive; a production instance needs its own DNS records, keys, and Google OAuth redirect URIs, and the publishable key is inlined at build time so CI's repository variable changes with it. | 1 h | **needs dashboard access** |
 | 2 | **Sign in with Apple** — Services ID and key in the Apple portal, then Clerk. Now unblocked by the canonical domain. Apple's Hide-My-Email relay will not match a Google or email identity, so Clerk cannot auto-link it. | 45 min | **needs dashboard access** |
-| 3 | **Move e2e into CI** — needs `CLERK_SECRET_KEY` (development) as a repository secret. Proven necessary by reproduction, not assumed. | 45 min | **needs a repo secret** |
 | 4 | **Screen-reader pass** over the signed-in surfaces. Axe reports zero violations everywhere including populated pages, but that is a floor. | 1 h | no |
 | 5 | **Clerk Pro** — ~90-day inactivity timeout, absolute maximum disabled, passkeys once the domain is canonical. | 30 min | **at invite time** |
 | 6 | **Drive backup account** — move to a TrackJot-owned Google account. | 30 min | **at invite time** |
