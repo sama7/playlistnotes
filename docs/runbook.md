@@ -18,7 +18,6 @@ processes, files, databases, and vhosts.
 | Node | `/opt/node24` (isolated; the system Node stays 18.19.1 for MKDb) |
 | Port | `127.0.0.1:3001`, reachable only through nginx |
 | nginx vhost | `/etc/nginx/sites-available/trackjot.com` |
-| Old host | `v2.playlistnotes.io` — 301s everything to `trackjot.com`, certificate still renewing so old share links keep working |
 | Certificate | Let's Encrypt, `trackjot.com` + `www.trackjot.com`, auto-renewing |
 | Database | droplet-local PostgreSQL 16, database and role both `trackjot` |
 | Backups | `/var/backups/trackjot/{hourly,daily}` |
@@ -157,12 +156,10 @@ certbot renew --dry-run
 The vhost is certbot-managed. Do not hand-edit the `# managed by Certbot` lines;
 change things through certbot and re-pull the file into `deploy/nginx/`.
 
-**Two certificates are live and both matter.** `trackjot.com` serves the
-product; `v2.playlistnotes.io` exists only to redirect, and its certificate must
-keep renewing — if it lapses, every share link created before the rename fails
-with a TLS warning instead of redirecting, which is worse than having no
-redirect at all. Its vhost therefore keeps an ACME challenge location above the
-redirect. Renewal was dry-run verified on 2026-08-12.
+`v2.playlistnotes.io` was retired on 2026-08-12 — vhost and certificate deleted.
+It was briefly kept as a redirect on the principle that share links are durable,
+which turned out not to apply: there were no users, no notes and no links in the
+wild. Its GoDaddy A record is harmless and can be removed whenever convenient.
 
 ## Health
 
