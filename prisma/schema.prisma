@@ -18,8 +18,8 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
   // Migrations must not run through a transaction-mode pooler. When DigitalOcean's
   // PgBouncer pool is in use, DATABASE_URL is pooled and DIRECT_URL is direct.
   directUrl = env("DIRECT_URL")
@@ -92,9 +92,20 @@ enum ImportStatus {
 model User {
   id String @id @default(uuid()) @db.Uuid
 
-  /// The verified subject from Clerk. Resolved by lazy upsert on the first
-  /// authenticated request using ON CONFLICT, so concurrent first requests
-  /// create exactly one row. NEVER accepted from client input.
+  /// The verified subject from the auth provider. Resolved by lazy upsert on
+  /// the first authenticated request using ON CONFLICT, so concurrent first
+  /// requests create exactly one row. NEVER accepted from client input.
+  ///
+  /// ONE column, not an auth_identities table, and that is deliberate. Clerk
+  /// links a Google sign-in to an existing account on verified-email match, so
+  /// a person who uses email one day and Google the next arrives with the SAME
+  /// subject either way. The multiplicity a join table would model does not
+  /// exist here — it would be modelling a provider we chose not to use.
+  ///
+  /// It becomes necessary only if the provider stops linking upstream (which is
+  /// the SuperTokens free tier's behaviour) or if a migration wants to run two
+  /// providers at once. Adding it then is a backfill from this clean unique
+  /// column, which is exactly the cheap position to be in.
   authSubject String @unique @map("auth_subject")
 
   /// Stored lowercased; the application validates and normalizes, which gives
@@ -107,11 +118,11 @@ model User {
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  notes             Note[]
-  collections       Collection[]
-  imports           Import[]
-  tags              Tag[]
-  authoredRecordings Recording[] @relation("RecordingCreatedBy")
+  notes              Note[]
+  collections        Collection[]
+  imports            Import[]
+  tags               Tag[]
+  authoredRecordings Recording[]  @relation("RecordingCreatedBy")
 
   @@map("users")
 }
@@ -143,9 +154,9 @@ model ArtistExternalId {
   id       String @id @default(uuid()) @db.Uuid
   artistId String @map("artist_id") @db.Uuid
 
-  provider   Provider
-  providerId String  @map("provider_id")
-  providerUrl String? @map("provider_url")
+  provider    Provider
+  providerId  String   @map("provider_id")
+  providerUrl String?  @map("provider_url")
 
   /// Allowlisted, size-limited subset plus provenance. Never a full provider
   /// response and never raw embed HTML.
@@ -219,8 +230,8 @@ model AlbumExternalId {
   albumId String @map("album_id") @db.Uuid
 
   provider    Provider
-  providerId  String  @map("provider_id")
-  providerUrl String? @map("provider_url")
+  providerId  String   @map("provider_id")
+  providerUrl String?  @map("provider_url")
 
   sourceMetadata Json @default("{}") @map("source_metadata")
 
@@ -257,8 +268,8 @@ model Recording {
   /// is a query rather than a bulk re-normalization. Nothing reads it yet.
   normalizedKey String @map("normalized_key")
 
-  durationMs Int?    @map("duration_ms")
-  albumId    String? @map("album_id") @db.Uuid
+  durationMs   Int?      @map("duration_ms")
+  albumId      String?   @map("album_id") @db.Uuid
   /// Denormalized album display, always available even without an Album row.
   releaseTitle String?   @map("release_title")
   releaseDate  DateTime? @map("release_date") @db.Date
@@ -277,10 +288,10 @@ model Recording {
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  album           Album?              @relation(fields: [albumId], references: [id], onDelete: SetNull)
-  createdBy       User?               @relation("RecordingCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
-  mergedInto      Recording?          @relation("RecordingMerge", fields: [mergedIntoId], references: [id], onDelete: SetNull)
-  mergedFrom      Recording[]         @relation("RecordingMerge")
+  album           Album?                @relation(fields: [albumId], references: [id], onDelete: SetNull)
+  createdBy       User?                 @relation("RecordingCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  mergedInto      Recording?            @relation("RecordingMerge", fields: [mergedIntoId], references: [id], onDelete: SetNull)
+  mergedFrom      Recording[]           @relation("RecordingMerge")
   artists         RecordingArtist[]
   externalIds     RecordingExternalId[]
   notes           Note[]
@@ -326,12 +337,12 @@ model RecordingExternalId {
   recordingId String @map("recording_id") @db.Uuid
 
   provider    Provider
-  providerId  String  @map("provider_id")
-  providerUrl String? @map("provider_url")
+  providerId  String   @map("provider_id")
+  providerUrl String?  @map("provider_url")
 
   /// Present in Exportify CSVs, which makes cross-provider resolution by ISRC
   /// available for free on the bulk import path.
-  isrc                  String?
+  isrc                   String?
   musicbrainzRecordingId String? @map("musicbrainz_recording_id") @db.Uuid
 
   sourceMetadata Json @default("{}") @map("source_metadata")

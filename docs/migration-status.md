@@ -431,8 +431,8 @@ holding no other copy, decrypted, and restored — probe row present, 17 tables.
 
 | # | Work | Est. | Blocked? |
 | --- | --- | --- | --- |
-| 1 | **Clerk → SuperTokens** — 7-day non-sliding sessions plus passkeys. Touches `lib/auth.ts`, `proxy.ts`, the sign-in/up routes, and the `users.auth_subject` upsert. Everything downstream is provider-agnostic already, and `auth_subject` is deliberately opaque. | 3–5 h | no |
-| 2 | **Signed-in Playwright specs** — happy path and cross-user privacy, after (1). Then the whole e2e suite moves into CI, which Clerk's development handshake currently makes flaky. | 1–2 h | after (1) |
+| 1 | **Signed-in Playwright specs** — happy path and cross-user privacy. Unblocked by the auth decision. | 1–2 h | no |
+| 2 | **Upgrade to Clerk Pro and configure sessions** — ~90-day inactivity timeout, absolute maximum disabled or a year. Do this at the invite, not before. Enable passkeys once the production domain is settled. | 30 min | needs the owner's card |
 | 3 | **Responsive and accessibility pass** — keyboard traversal of the tracklist and its inline editors, focus management, contrast, and a screen-reader pass over the share panel. | 1–2 h | no |
 | 4 | **Invite ~10 testers.** | — | no |
 
@@ -440,37 +440,50 @@ holding no other copy, decrypted, and restored — probe row present, 17 tables.
 Sentry/PostHog (credentials-gated and only useful with traffic), artist and album
 pages, Last.fm, and cutover of the apex domain. All recorded in `AGENTS.md` §16.
 
-### The SuperTokens migration needs a decision first
+### Auth decision — SETTLED 2026-08-11: stay on Clerk, Pro at the invite
 
-Two things should be settled before the 3–5 hours are spent, and both are the
-owner's call rather than an implementation detail.
+The question was investigated properly (Sol's report, independently re-verified
+against primary sources), and **the assumption behind it was backwards.**
 
-**1. Where does the SuperTokens core run?** SuperTokens is not a library — it is
-an SDK plus a **separate core service**, and the core is a JVM process.
+The premise was that SuperTokens would be cheaper and more independent. It is
+neither, for what Playlistnotes actually offers:
 
-- *Managed (their SaaS, free tier):* nothing new on the droplet. Costs an
-  external dependency and an account.
-- *Self-hosted on the droplet:* measured on 2026-08-11 the box has **1.1 GiB
-  available** of 1.9 GiB, with no swap pressure but no Docker and no Java
-  installed. A Docker daemon plus a JVM core is realistically 350–500 MB, and
-  MKDb's weekly sync spikes on the same box. That is the one risk the contract
-  says never to take.
+- SuperTokens makes **account linking a paid feature with a $100/month
+  minimum** — verified twice, on the pricing page and in the enterprise
+  feature-flag list in `EEFeatureFlag.java`, where `ACCOUNT_LINKING` and `MFA`
+  appear and `WEBAUTHN` does not.
+- **Clerk Pro is $25/month and includes it.** SuperTokens is 4× the price for
+  the feature set we want.
+- Playlistnotes offers email OTP **and** Google. Without linking, one person
+  using both becomes two identities, and with `users.auth_subject` unique, two
+  accounts and a split journal. The DIY workaround — linking on matching email —
+  is already forbidden by §9, and was right to be.
+- Self-hosting was measured, not guessed: **1.1 GiB available** on a box shared
+  with MKDb, against a Docker daemon plus JVM core at 350–500 MB. That is the
+  one risk the contract says never to take.
 
-**Recommendation: managed.** Self-hosting to avoid a dependency, at the price of
-putting MKDb's database within reach of the OOM killer, is the wrong trade for a
-product with no users yet.
+Two things Sol got wrong, both minor and both in our favour: the recommended
+mitigation for SuperTokens' stateless access tokens cites
+`access_token_blacklisting`, which `config.yaml` marks deprecated ("Only used in
+CDI<=2.18"); and the migration blast radius is smaller than described, because
+this codebase already isolates the provider — eight files import Clerk, five
+trivially, and **21 of 24 auth-derived call sites go through `requireUser()`**,
+which never sees a provider.
 
-**2. Is the migration necessary at all?** The reason recorded for leaving Clerk
-is a 7-day non-sliding session plus passkeys. Both of those appear to be
-configurable in Clerk — session lifetime and inactivity timeout are settings, and
-Clerk supports passkeys. Worth confirming in the dashboard before spending the
-time: if Clerk can do it, the migration buys an avoided vendor and little else,
-and that is a different trade than the one originally made.
+**Hobby now, Pro at the invite.** Hobby's fixed seven-day session is not merely
+annoying: it would manufacture exactly the lapses `AuthLapse` was built to
+measure, corrupting the retention signal the whole validation window depends on.
 
-Nothing else in the remaining work depends on the answer. `users.auth_subject` is
-deliberately opaque and every owner-scoped query derives its user from it, so
-whichever provider wins, the blast radius is `lib/auth.ts`, `proxy.ts`, and the
-sign-in/up routes.
+**No `auth_identities` table.** Recommended, then withdrawn on challenge, and the
+challenge was right. Clerk links a Google sign-in to an existing account on
+verified-email match, so one person arrives with the same subject however they
+signed in — the multiplicity a join table would model does not exist here. It
+would be modelling a provider we chose not to use. It becomes necessary only if
+the provider stops linking upstream, or if a migration wants to run two providers
+at once; adding it then is a backfill from a clean unique column.
+
+**Consequence: the signed-in Playwright specs are unblocked.** They were deferred
+only because a Clerk auth fixture looked throwaway. It is not throwaway any more.
 
 ### Everything else the user was blocked on is now closed
 
