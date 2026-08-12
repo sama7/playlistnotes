@@ -57,7 +57,7 @@ Do not introduce React Native, E2EE, billing, collaboration, microservices, Kube
 The five-user cap applies to Spotify-authenticated users, not Playlistnotes accounts or public links/Embeds. Implement the following capability boundary exactly:
 
 - Spotify track URL/URI: resolve/create a Playlistnotes recording and allow a note without Spotify OAuth. Basic Embed metadata is best-effort; minimal user-supplied metadata is the fallback.
-- Public Spotify playlist URL: **provenance only.** Pasted while creating a collection, it supplies `source_url`, an oEmbed-prefilled name, an "Open in Spotify" link, and an optional compliant Embed. Pasted anywhere else it creates nothing and instead explains that Playlistnotes cannot read a playlist's tracks, offering CSV import or a from-scratch collection. **A playlist link never creates a collection or a collection item.**
+- Public Spotify playlist URL: **imports the collection** (reversed 2026-08-10 — Client Credentials enumerates user-created public playlists without any user OAuth). A playlist that genuinely cannot be enumerated — Spotify's own editorial playlists, or anything private — creates **nothing**, and says why, offering CSV import. Apple Music serves its editorial playlists and needs a developer token for playlists at all. The invariant that survives: a collection is created only from an enumerated tracklist or an uploaded file, never inferred from a link alone.
 - Playlist contents: accept an Exportify-compatible or neutral user-supplied CSV as an ordered snapshot.
 - Spotify albums/artists: defer first-class capture until the core track workflow is proven.
 - Spotify library/private playlists: unsupported in the rescue sprint.

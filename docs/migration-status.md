@@ -410,6 +410,24 @@ holding no other copy, decrypted, and restored — probe row present, 17 tables.
 
 **Test totals: 276.** 110 unit, 137 integration, 29 Playwright.
 
+### Two pre-existing defects found by an outside audit, 2026-08-12
+
+**The contract contradicted the implementation.** `AGENTS.md` §4.4 and the
+matching line in `CLAUDE.md` still carried the original "a playlist link never
+creates a collection" rule, while §11 recorded its reversal and the code, tests
+and README all implemented the reversal. `AGENTS.md` declares itself
+authoritative, so a future agent reading §4.4 could have obeyed the obsolete
+rule and removed working behaviour. Both are now rewritten to state the surviving
+invariant — a collection comes from an enumerated tracklist or an uploaded file,
+never inferred from a link — with the reversal flagged inline.
+
+**The invite gate does not exist.** `.env.example` declares
+`REQUIRE_INVITE_CODE` and `INVITE_CODE`; no source file reads either. `noindex`
+keeps the host out of search results and is not access control — anyone with the
+URL can sign up right now. The variables are now marked NOT IMPLEMENTED, and a
+real gate is a prerequisite before the host is called invite-only anywhere that
+matters.
+
 ## Not yet done — blocked on the user
 
 | Blocked item | Needs |
