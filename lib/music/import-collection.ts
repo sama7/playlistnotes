@@ -3,7 +3,7 @@ import { resolveImportableTrack } from "./persist-track";
 import type { ImportableCollection } from "./importable";
 
 /**
- * Turning a Spotify album or public playlist into a Playlistnotes collection.
+ * Turning a Spotify album or public playlist into a TrackJot collection.
  *
  * Two rules from AGENTS.md shape everything here:
  *

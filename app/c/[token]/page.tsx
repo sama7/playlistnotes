@@ -34,7 +34,7 @@ export default async function SharedCollectionPage({
 
   return (
     <main>
-      <p className="eyebrow">Shared from Playlistnotes</p>
+      <p className="eyebrow">Shared from TrackJot</p>
       <h1>{collection.name}</h1>
       <p className="lede">
         {collection.tracks.length} track{collection.tracks.length === 1 ? "" : "s"}

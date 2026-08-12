@@ -144,7 +144,7 @@ describe("a collection link is never captured as a track", () => {
    * return value alone: **a playlist link creates no collection and no items**
    * by this path.
    *
-   * What this no longer claims is that Playlistnotes cannot read a playlist at
+   * What this no longer claims is that TrackJot cannot read a playlist at
    * all. It can — a public playlist enumerates through Client Credentials, and
    * pasting one imports it. That import is a separate, deliberate path
    * (`importFromSpotifyLink`); capture's job is to hand the link over rather

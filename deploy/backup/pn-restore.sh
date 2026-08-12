@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Restore a Playlistnotes backup — into a scratch database by default.
+# Restore a TrackJot backup — into a scratch database by default.
 #
 # A backup nobody has restored is a hypothesis, not a backup. This is the other
 # half of pn-backup.sh and it is meant to be *run*, not just to exist: the
@@ -12,16 +12,16 @@
 # make on purpose, at 3am, while tired.
 #
 # Usage:
-#   pn-restore.sh /var/backups/playlistnotes/daily/pn-20260811.sql.gz.enc
-#   pn-restore.sh <archive> playlistnotes_restore_check
+#   pn-restore.sh /var/backups/trackjot/daily/pn-20260811.sql.gz.enc
+#   pn-restore.sh <archive> trackjot_restore_check
 
 set -euo pipefail
 
 ARCHIVE="${1:?usage: pn-restore.sh <encrypted-archive> [target-database]}"
-TARGET="${2:-playlistnotes_restore_check}"
+TARGET="${2:-trackjot_restore_check}"
 PASS_FILE="${PN_PASS_FILE:-/root/.pn-db-backup-pass}"
 
-if [ "$TARGET" = "playlistnotes" ] && [ "${PN_ALLOW_LIVE:-no}" != "yes" ]; then
+if [ "$TARGET" = "trackjot" ] && [ "${PN_ALLOW_LIVE:-no}" != "yes" ]; then
   echo "Refusing to restore over the live database. Re-run with PN_ALLOW_LIVE=yes if that is genuinely what you want." >&2
   exit 1
 fi
@@ -51,7 +51,7 @@ tail -n 5 "$PLAIN" | grep -q 'PostgreSQL database dump complete' || {
 }
 
 sudo -u postgres dropdb --if-exists "$TARGET"
-sudo -u postgres createdb -O playlistnotes "$TARGET"
+sudo -u postgres createdb -O trackjot "$TARGET"
 # Fed on stdin rather than with -f: the dump lives in a 0600 root-owned temp
 # file, which the postgres user cannot open. The redirection happens in this
 # shell, so psql inherits an already-open descriptor and never needs the path.

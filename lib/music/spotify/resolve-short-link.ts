@@ -7,7 +7,7 @@ import { parseSpotifyLink, type SpotifyRef } from "./parse-link";
  * campaign link, rather than plain "Copy link" — uncommon, but a dead end if
  * unhandled.
  *
- * This is the only place Playlistnotes follows a redirect, so it is written as
+ * This is the only place TrackJot follows a redirect, so it is written as
  * a bounded walk rather than a fetch: **every hop's host must be on the
  * allowlist**, redirects are inspected manually instead of followed
  * automatically, hops are capped, and the whole thing is on a timeout.
@@ -47,7 +47,7 @@ const ALLOWED_HOPS = new Set([
  * resolving to a public track through the Location header is exactly what
  * redirects are for. We still never scrape the interstitial.
  */
-const USER_AGENT = "Playlistnotes/2.0 curl-compatible (+https://playlistnotes.io)";
+const USER_AGENT = "TrackJot/2.0 curl-compatible (+https://trackjot.com)";
 
 const MAX_HOPS = 4;
 const TIMEOUT_MS = 4_000;

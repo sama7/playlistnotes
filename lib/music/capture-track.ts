@@ -119,7 +119,7 @@ async function captureSpotifyTrack(
       return {
         ok: false,
         reason: "artist",
-        message: "Playlistnotes captures tracks, albums and playlists — not artist pages yet.",
+        message: "TrackJot captures tracks, albums and playlists — not artist pages yet.",
       };
     case "short-link":
       return { ok: false, reason: "short-link", message: "We couldn't follow that short link." };
@@ -241,7 +241,7 @@ async function captureAppleTrack(
     return {
       ok: false,
       reason: "artist",
-      message: "Playlistnotes captures tracks, albums and playlists — not artist pages yet.",
+      message: "TrackJot captures tracks, albums and playlists — not artist pages yet.",
     };
   }
   if (ref.kind !== "track") {

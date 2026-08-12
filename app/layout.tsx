@@ -3,7 +3,7 @@ import { ClerkProvider } from "@clerk/nextjs";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Playlistnotes",
+  title: "TrackJot",
   description: "A place to keep what music means to you.",
   // The staging host must never be indexed. Production flips ALLOW_INDEXING.
   robots:

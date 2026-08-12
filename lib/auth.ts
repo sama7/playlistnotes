@@ -9,7 +9,7 @@ import type { User } from "@prisma/client";
  *
  *   1. The acting identity comes ONLY from the verified server session. No
  *      route, Server Action, import, or legacy mapping may accept a
- *      Playlistnotes user ID from client input. This is the defect that made
+ *      TrackJot user ID from client input. This is the defect that made
  *      v1's note endpoints world-writable.
  *   2. Concurrent first requests for one verified subject must create exactly
  *      ONE local row.

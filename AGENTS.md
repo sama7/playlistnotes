@@ -1,14 +1,14 @@
-# Playlistnotes v2 - Implementation Contract
+# TrackJot v2 - Implementation Contract
 
-This file is the model-agnostic source of truth for agents implementing Playlistnotes v2. Read it completely before changing code. `CLAUDE.md` is an adapter for Claude Code and must not override this file.
+This file is the model-agnostic source of truth for agents implementing TrackJot v2. Read it completely before changing code. `CLAUDE.md` is an adapter for Claude Code and must not override this file.
 
-**Contract precedence:** this `AGENTS.md` > `CLAUDE.md` > `docs/v2-plan/playlistnotes-v2-report.html` and any archived planning material. The report is narrative rationale and is **non-normative**; it predates the August 7, 2026 reconciliation and disagrees with this file in several places. Where they differ, this file wins.
+**Contract precedence:** this `AGENTS.md` > `CLAUDE.md` > `docs/v2-plan/trackjot-v2-report.html` and any archived planning material. The report is narrative rationale and is **non-normative**; it predates the August 7, 2026 reconciliation and disagrees with this file in several places. Where they differ, this file wins.
 
 ## 1. Mission
 
-Rebuild Playlistnotes as a provider-independent music journal in which people can privately annotate recordings, organize them into collections, and deliberately share selected notes or collections.
+Rebuild TrackJot as a provider-independent music journal in which people can privately annotate recordings, organize them into collections, and deliberately share selected notes or collections.
 
-The v2 product must not require a Spotify login. Spotify, Last.fm, MusicBrainz, Apple Music, YouTube, Bandcamp, and similar services are optional sources or destinations. Playlistnotes owns its user accounts, notes, collections, privacy rules, public URLs, and internal music identifiers.
+The v2 product must not require a Spotify login. Spotify, Last.fm, MusicBrainz, Apple Music, YouTube, Bandcamp, and similar services are optional sources or destinations. TrackJot owns its user accounts, notes, collections, privacy rules, public URLs, and internal music identifiers.
 
 The initial product hypothesis is:
 
@@ -23,12 +23,12 @@ The initial validation question is:
 Policy baseline checked August 6, 2026:
 
 - Spotify Development Mode requires the app owner to have an active Spotify Premium subscription and permits at most **five allowlisted authenticated Spotify users per app**. A non-allowlisted user may appear to complete OAuth, but API requests made with that token return `403`.
-- Spotify raised the limit to **25 Client IDs per developer account** on July 23, 2026. That is a limit on app identifiers, not users. All Development Mode apps under the developer account share one API quota; do not shard Playlistnotes users across Client IDs or treat multiple IDs as a scaling strategy.
+- Spotify raised the limit to **25 Client IDs per developer account** on July 23, 2026. That is a limit on app identifiers, not users. All Development Mode apps under the developer account share one API quota; do not shard TrackJot users across Client IDs or treat multiple IDs as a scaling strategy.
 - Spotify's February 2026 migration guide says apps that already had more than five authorized users may retain that existing cohort, but the restriction applies to users added going forward. **Verified on the Playlistnotes dashboard: 20 users were onboarded through User Management and are grandfathered above the current cap.** That cohort is a test asset, not a growth plan — no further users can be added, so v1 cannot onboard testers.
 - Extended Quota Mode still permits an unlimited number of authorized Spotify users, but new applications currently require an established organization, a launched service, at least 250,000 monthly active users, key-market availability, commercial viability, and policy compliance. It is a possible future partnership path, not an MVP dependency.
 - Spotify describes Development Mode as a sandbox for personal, non-commercial experimentation and says it should not be the foundation of a scalable business.
 
-The five-user rule constrains users who authenticate with Playlistnotes' Spotify application. It does **not** constrain Playlistnotes-owned accounts or visitors who open public Spotify links and Embeds. V2 therefore separates product identity from provider identity.
+The five-user rule constrains users who authenticate with TrackJot' Spotify application. It does **not** constrain TrackJot-owned accounts or visitors who open public Spotify links and Embeds. V2 therefore separates product identity from provider identity.
 
 Official references: [Spotify quota modes](https://developer.spotify.com/documentation/web-api/concepts/quota-modes), [February 2026 access update](https://developer.spotify.com/blog/2026-02-06-update-on-developer-access-and-platform-security), [February 2026 migration guide](https://developer.spotify.com/documentation/web-api/tutorials/february-2026-migration-guide), and [July 2026 quota update](https://developer.spotify.com/blog/2026-07-23-web-api-quota-updates).
 
@@ -53,7 +53,7 @@ The current v1 implementation is a small JavaScript/Express/Create React App app
 
 Known issues:
 
-- Spotify identity is treated as Playlistnotes identity.
+- Spotify identity is treated as TrackJot identity.
 - Note routes derive the acting owner from client-supplied values rather than a verified session, so reads and mutations are not owner-scoped. Specifics are omitted: this repository is public and v1 is still serving.
 - Spotify access and refresh tokens are stored and logged.
 - One mutable Spotify API client is shared across requests, which is unsafe under concurrent users.
@@ -87,7 +87,7 @@ If legacy notes are imported later:
 
 ## 3a. Catalog policy
 
-The honest risk in v2 is not schema design; it is drifting into catalog maintenance nobody has staffed. **The catalog is not the product. The notes are.** MusicBrainz must be correct about all music; Playlistnotes must guarantee that a note you wrote is findable later. Only the second is a promise to users.
+The honest risk in v2 is not schema design; it is drifting into catalog maintenance nobody has staffed. **The catalog is not the product. The notes are.** MusicBrainz must be correct about all music; TrackJot must guarantee that a note you wrote is findable later. Only the second is a promise to users.
 
 1. **Growth is bounded by user behavior, not by music.** Rows are created only when a user adds a song. No crawling, no catalog sync, no corpus to keep fresh. 1,000 users × 500 tracks is 500k rows — unremarkable for PostgreSQL.
 2. **A duplicate only costs something when two users must share the row.** Today each user sees only their own notes, so a duplicated recording is invisible and "prefer a duplicate over a false merge" is nearly free. That changes when the catalog becomes shared surface.
@@ -121,7 +121,7 @@ The honest risk in v2 is not schema design; it is drifting into catalog maintena
 
    **Rate limits are survivable only because of ordering.** Spotify's limit is per app over a rolling 30-second window and is lower in Development Mode. The capture flow therefore consults the database **before** any provider call, so a known track resolves with zero network calls and request volume tracks catalog growth rather than usage. `tests/integration/no-network-on-known-track.test.ts` asserts the call count directly; do not reintroduce a lookup above that check.
 
-   **Reuse the existing Playlistnotes Spotify application** (client id `267de355b91648638b917d32faa7e23b`). A second app was considered and rejected: it is the same product, Client Credentials needs no redirect URI and no user list, and **all Development Mode apps under one developer account share a single quota**, so a second registration buys nothing. Keep the secret in `.env.local`.
+   **Reuse the existing TrackJot Spotify application** (client id `267de355b91648638b917d32faa7e23b`). A second app was considered and rejected: it is the same product, Client Credentials needs no redirect URI and no user list, and **all Development Mode apps under one developer account share a single quota**, so a second registration buys nothing. Keep the secret in `.env.local`.
 
    Decommissioning the Heroku *deployment* at cutover does not affect the Spotify *application* — the registration and its credentials keep working, so v2's metadata lookups survive v1's retirement untouched.
 
@@ -131,18 +131,18 @@ Enrichment across MusicBrainz, Last.fm, Apple Music, Tidal, and Wikipedia is exp
 
 Unless the user explicitly changes a decision, implement the following:
 
-1. Playlistnotes has first-party accounts managed through an established authentication provider or library.
+1. TrackJot has first-party accounts managed through an established authentication provider or library.
 2. Initial sign-in methods are email one-time code and Google. Apple is deferred until a native application or demonstrated demand.
 3. A user can paste a Spotify track link and create a note without authorizing Spotify.
-4. **A public playlist link imports a collection. A playlist link never *infers* one.** ⚠️ **This rule was reversed on 2026-08-10; the original text is preserved in §11 for the reasoning.** The original assumed Playlistnotes could not read a playlist's tracks without user OAuth. Testing disproved it: Client Credentials authenticates the *application*, so user-created public playlists enumerate fully — verified against three playlists from three owners at 4, 42 and 50 tracks. What remains genuinely unreadable is Spotify's own editorial playlists (404 in Development Mode) and anything private; both are refused with an explanation and pointed at CSV import. **The surviving invariant is narrower and still absolute: a collection is created only from an enumerated tracklist or an uploaded file. A link that cannot be enumerated creates nothing — no empty collection, no placeholder items, no bookmark.** Apple Music behaves the reverse way and serves its editorial playlists; both providers are handled by the same rule.
-5. A user can populate a Playlistnotes collection snapshot from an Exportify-compatible or documented neutral CSV. The uploaded file—not a playlist iframe—is authoritative for its item list.
-6. Every note references a recording. A note may also reference a Playlistnotes `collection_item` to preserve playlist-specific context; multiple journal entries per recording are allowed.
+4. **A public playlist link imports a collection. A playlist link never *infers* one.** ⚠️ **This rule was reversed on 2026-08-10; the original text is preserved in §11 for the reasoning.** The original assumed TrackJot could not read a playlist's tracks without user OAuth. Testing disproved it: Client Credentials authenticates the *application*, so user-created public playlists enumerate fully — verified against three playlists from three owners at 4, 42 and 50 tracks. What remains genuinely unreadable is Spotify's own editorial playlists (404 in Development Mode) and anything private; both are refused with an explanation and pointed at CSV import. **The surviving invariant is narrower and still absolute: a collection is created only from an enumerated tracklist or an uploaded file. A link that cannot be enumerated creates nothing — no empty collection, no placeholder items, no bookmark.** Apple Music behaves the reverse way and serves its editorial playlists; both providers are handled by the same rule.
+5. A user can populate a TrackJot collection snapshot from an Exportify-compatible or documented neutral CSV. The uploaded file—not a playlist iframe—is authoritative for its item list.
+6. Every note references a recording. A note may also reference a TrackJot `collection_item` to preserve playlist-specific context; multiple journal entries per recording are allowed.
 7. Importing or publishing a collection never publishes note bodies implicitly. Each note retains its own visibility and must be deliberately exposed.
 8. A user can create, edit, delete, search, and tag their own notes.
 9. Notes and collections support `private`, `unlisted`, and `public` visibility.
-10. A public URL is owned by Playlistnotes and remains stable if an external provider ID changes.
+10. A public URL is owned by TrackJot and remains stable if an external provider ID changes.
 11. Last.fm recent-listen import is the first post-core integration, not the canonical music database.
-12. MusicBrainz is an optional resolution/enrichment layer, not the Playlistnotes primary key.
+12. MusicBrainz is an optional resolution/enrichment layer, not the TrackJot primary key.
 13. Exportify is a CSV compatibility target, not a runtime dependency, API integration, endorsement, or guaranteed long-term source. Never scrape or automate Exportify.
 14. Existing Spotify OAuth may be preserved only as an isolated, feature-flagged legacy experiment for an already authorized cohort. It is not part of v2 onboarding or any core workflow.
 15. No billing, end-to-end encryption, React Native, collaboration, or automatic Spotify synchronization in the rescue sprint.
@@ -158,11 +158,11 @@ Clerk arrived in this contract as an unexamined default. It was compared against
 
 **What SuperTokens genuinely wins, and is worth revisiting for:** it is Apache 2.0 and self-hostable (no vendor pricing risk), user data stays in your own PostgreSQL, and **passkeys are included free** whereas Clerk gates them behind Pro at $25/mo.
 
-**Why the lock-in risk is acceptable:** `users.auth_subject` is a mapping, never a primary key. Every note, collection, and import is scoped by a Playlistnotes UUID, so changing provider means exporting users, creating them elsewhere, and updating one column. That is deliberate insurance, and it is what makes this decision reversible.
+**Why the lock-in risk is acceptable:** `users.auth_subject` is a mapping, never a primary key. Every note, collection, and import is scoped by a TrackJot UUID, so changing provider means exporting users, creating them elsewhere, and updating one column. That is deliberate insurance, and it is what makes this decision reversible.
 
 **Revisit when** any of these becomes true: approaching 50,000 MRU; Clerk changes pricing again; data sovereignty becomes a requirement; or passkeys become urgent enough that Pro's cost bites.
 
-**Sessions — a scheduled decision, not a settled one.** Clerk's default maximum lifetime is 7 days, is **fixed from sign-in rather than sliding with activity**, and cannot be changed on the free tier in production. A user who opens Playlistnotes daily is still signed out every seventh day. SuperTokens, by contrast, defaults its refresh token to **100 days and does slide** — any activity extends it — and it is a plain config value with no paywall.
+**Sessions — a scheduled decision, not a settled one.** Clerk's default maximum lifetime is 7 days, is **fixed from sign-in rather than sliding with activity**, and cannot be changed on the free tier in production. A user who opens TrackJot daily is still signed out every seventh day. SuperTokens, by contrast, defaults its refresh token to **100 days and does slide** — any activity extends it — and it is a plain config value with no paywall.
 
 This matters more than a normal UX papercut for two reasons: a journal is used at roughly weekly cadence, which is almost exactly where a 7-day hard expiry lands; and §13's validation metric is later-day return, so the friction sits directly on the measurement. Retention measured through a login wall cannot distinguish "did not care" from "could not be bothered to re-authenticate."
 
@@ -199,7 +199,7 @@ Keep a stable, documented REST surface under `/api/v1` for future React Native c
 
 ## 6. Domain model
 
-Use UUID primary keys generated by Playlistnotes. External identifiers are mappings, never primary keys.
+Use UUID primary keys generated by TrackJot. External identifiers are mappings, never primary keys.
 
 ### Required entities
 
@@ -245,7 +245,7 @@ The authenticated server session supplies `auth_subject`. Never accept the actin
 
 **Canonical metadata is write-once at creation.** A user's typed title/artist may initialize a recording when it is first created; thereafter another user's typed input never mutates the shared row — it becomes a per-note display override (see `notes`).
 
-A recording represents a specific recorded performance/version, not an abstract composition. Playlistnotes creates recordings lazily as users add music; it does not need or ingest a complete global song catalog. A manually entered recording may exist without any external identifier.
+A recording represents a specific recorded performance/version, not an abstract composition. TrackJot creates recordings lazily as users add music; it does not need or ingest a complete global song catalog. A manually entered recording may exist without any external identifier.
 
 #### `artist_external_ids`
 
@@ -388,7 +388,7 @@ Add PostgreSQL full-text or trigram indexes only after the corresponding query e
 
 Resolution must be conservative. A false merge is worse than a temporary duplicate.
 
-Internal UUIDs are server-generated and are never derived from a Spotify ID, ISRC, MusicBrainz ID, or normalized metadata. Similar names are evidence, not identity. A removed provider mapping must not break a Playlistnotes public URL.
+Internal UUIDs are server-generated and are never derived from a Spotify ID, ISRC, MusicBrainz ID, or normalized metadata. Similar names are evidence, not identity. A removed provider mapping must not break a TrackJot public URL.
 
 Match in this order:
 
@@ -427,9 +427,9 @@ Suggested responsibilities:
 
 | Input | Supported behavior | Explicit boundary |
 | --- | --- | --- |
-| Spotify track URL or URI | Parse the track ID, resolve/create a Playlistnotes recording, fetch approved display metadata when available, and create a note | No Spotify login, library access, or permanent dependence on metadata availability |
+| Spotify track URL or URI | Parse the track ID, resolve/create a TrackJot recording, fetch approved display metadata when available, and create a note | No Spotify login, library access, or permanent dependence on metadata availability |
 | Public Spotify playlist URL | **Attach provenance to a collection the user is creating** — source URL, oEmbed-prefilled name, "Open in Spotify", optional compliant Embed | **Creates no collection and no items on its own.** Do not infer, enumerate, or claim to import its track items |
-| Exportify-compatible or neutral CSV | Create an ordered Playlistnotes collection snapshot and preserve duplicates | No live synchronization; Exportify is not called by Playlistnotes |
+| Exportify-compatible or neutral CSV | Create an ordered TrackJot collection snapshot and preserve duplicates | No live synchronization; Exportify is not called by TrackJot |
 | Spotify album or artist URL | Optional source card/Embed after the core track workflow | Do not create child recordings from the link during the rescue sprint |
 | Spotify library or private playlists | Unsupported in the rescue sprint | No `/me`, library, playlist OAuth scopes, or user token storage |
 
@@ -449,7 +449,7 @@ Tested against the live APIs with an app token, **not inferred from documentatio
 
 Two consequences worth stating plainly:
 
-- **The premise behind §4.4 was wrong.** That decision assumed Playlistnotes cannot read a playlist's tracks without user OAuth. It can, for user-created public playlists, because Client Credentials authenticates the *application* and no user is involved. What is genuinely unavailable is Spotify's own editorial playlists and anything private.
+- **The premise behind §4.4 was wrong.** That decision assumed TrackJot cannot read a playlist's tracks without user OAuth. It can, for user-created public playlists, because Client Credentials authenticates the *application* and no user is involved. What is genuinely unavailable is Spotify's own editorial playlists and anything private.
 - **Apple Music needs no paid account for metadata.** The public iTunes lookup/search API returns tracks and full album tracklists unauthenticated, at roughly 20 requests per minute. Only Apple Music *playlists* require the developer token.
 
 ### `spotify.link` short links — cannot be resolved honestly
@@ -490,7 +490,7 @@ Resolving these therefore requires either impersonating a different client or sc
 ### Last.fm adapter - post-core
 
 - Start with recent scrobbles and optionally loved/top tracks.
-- Treat a Last.fm username as a source setting, not Playlistnotes authentication.
+- Treat a Last.fm username as a source setting, not TrackJot authentication.
 - Verify profile ownership only if the product claims the profile is verified.
 - Do not use Last.fm as the canonical recording identity.
 - Do not use Last.fm-provided artwork under the ordinary API terms.
@@ -621,7 +621,7 @@ Exit criteria: a realistic CSV creates a correctly ordered collection, duplicate
 ### Phase 4 - sharing, search, and product polish
 
 - Implement private/unlisted/public visibility.
-- Add public note and collection pages with stable Playlistnotes URLs.
+- Add public note and collection pages with stable TrackJot URLs.
 - Add user-scoped note search.
 - Make the primary workflows responsive and accessible.
 - Add a concise landing page explaining the provider-independent product.
@@ -710,9 +710,9 @@ Initial deployment — concrete facts for this environment:
 
 - The droplet (address in the DigitalOcean console, deliberately not recorded in this public repo) is **1 vCPU / 2 GB RAM / 50 GB disk** in NYC1, and **already runs MKDb**: pm2 processes `server` and `mankbot`, nginx proxying to Node on **`localhost:3000`**, PostgreSQL 16 local over a UNIX socket, Let's Encrypt TLS, and a weekly crontab. **Never modify MKDb's process, nginx ownership, database, role, files, or cron.**
 - **GitHub Actions builds; the droplet only runs.** Use Next.js `output: 'standalone'` and rsync `.next/standalone`, `.next/static`, and `public`. A `next build` spike alongside MKDb and its local PostgreSQL risks the OOM killer taking out MKDb's database. Set Prisma `binaryTargets = ["native", "debian-openssl-3.0.x"]` so the CI-built query engine runs on Ubuntu.
-- Playlistnotes binds **`127.0.0.1:3001`** under its own pm2 process named `playlistnotes`, with its own nginx virtual host and certificate.
+- TrackJot binds **`127.0.0.1:3001`** under its own pm2 process named `trackjot`, with its own nginx virtual host and certificate.
 - Copy MKDb's proven proxy configuration: forward `X-Real-IP`, `X-Forwarded-For`, and `X-Forwarded-Proto`, and set `trust proxy` to one hop, or rate limiting will see every request as `127.0.0.1`.
-- **A droplet-local PostgreSQL 16 database and role named `playlistnotes`**, reached over the local socket, entirely separate from MKDb's. Managed PostgreSQL was evaluated and rejected on cost while the product has no users; what it would have bought — automated, off-host, point-in-time-ish backups — must therefore be built and rehearsed instead, and that job is a pre-invite requirement, not a nicety. If Managed PostgreSQL is later adopted, Prisma needs `DATABASE_URL` (pooled) **and** `DIRECT_URL` (direct), because migrations must not run through a transaction-mode pooler.
+- **A droplet-local PostgreSQL 16 database and role named `trackjot`**, reached over the local socket, entirely separate from MKDb's. Managed PostgreSQL was evaluated and rejected on cost while the product has no users; what it would have bought — automated, off-host, point-in-time-ish backups — must therefore be built and rehearsed instead, and that job is a pre-invite requirement, not a nicety. If Managed PostgreSQL is later adopted, Prisma needs `DATABASE_URL` (pooled) **and** `DIRECT_URL` (direct), because migrations must not run through a transaction-mode pooler.
 - DNS is at **GoDaddy**. `v2.playlistnotes.io` is a plain A record to the droplet, added alongside the existing records and touching none of them.
 - **The apex is not domain forwarding — that earlier assumption was wrong, corrected from the GoDaddy panel on August 10 2026.** `playlistnotes.io` holds two apex `A` records (`15.197.225.128`, `3.33.251.168`, Heroku's published apex addresses) and `www` is a `CNAME` to a `herokudns.com` target. Both apex `A` rows render with edit and delete disabled in the panel, which is what GoDaddy does for records owned by a Domain Connect integration; assume that integration must be disconnected before those rows can be repointed, and confirm it in the panel rather than discovering it during cutover. Cutover therefore replaces two apex `A` records and one `www` `CNAME`, not a forwarding rule. Certbot replaces Heroku ACM.
 - Keep user-uploaded binary assets out of the application filesystem; use object storage if attachments are later introduced.
@@ -759,7 +759,7 @@ Agreed August 10, 2026. These are release blockers, not backlog.
 | **Apple Music playlist import** | The one Apple capability that *does* need a paid Apple Developer account (~$99/yr) and a signed developer token. Samah will set this up toward the end of the sprint. |
 | Playwright specs that must sign in | Deferred until **after** the Clerk → SuperTokens migration. Clerk testing tokens would work today, but the auth fixture is throwaway once the provider changes, and it is the fixture rather than the assertions that would be rewritten. Anonymous-visitor specs — landing, gate redirect, private content unavailable when signed out — do not depend on the provider and are written before it. |
 
-The point of shipping Apple Music alongside Spotify is not feature count: it is that **two independent providers, neither load-bearing, is the demonstration** that Playlistnotes is no longer a Spotify client. One provider is an integration; two is an architecture.
+The point of shipping Apple Music alongside Spotify is not feature count: it is that **two independent providers, neither load-bearing, is the demonstration** that TrackJot is no longer a Spotify client. One provider is an integration; two is an architecture.
 
 ### Recorded backlog — deferred, not abandoned
 
@@ -831,7 +831,7 @@ The rescue is complete when all of the following are true:
 - A user can paste a Spotify track link and create a private note.
 - A pasted public Spotify playlist link creates **no collection and no collection items**; it only attaches provenance to a collection the user is deliberately creating.
 - A user can import an Exportify-compatible CSV into an ordered collection.
-- Each music entry has a Playlistnotes UUID and external identifier mappings, and artists and albums are linked from provider IDs rather than name strings.
+- Each music entry has a TrackJot UUID and external identifier mappings, and artists and albums are linked from provider IDs rather than name strings.
 - Notes and collections enforce owner authorization on the server.
 - A user can intentionally create a stable unlisted or public share URL.
 - Publishing a collection does not implicitly publish any private note body.

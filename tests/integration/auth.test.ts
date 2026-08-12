@@ -56,7 +56,7 @@ describe("resolveLocalUser", () => {
   });
 
   /**
-   * Account linking is delegated to the auth provider. Playlistnotes must never
+   * Account linking is delegated to the auth provider. TrackJot must never
    * merge two local accounts because two profiles happen to carry the same
    * email string — an unverified email is not an identity.
    */

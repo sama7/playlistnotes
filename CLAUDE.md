@@ -1,12 +1,12 @@
-# Playlistnotes v2 - Claude Code Guide
+# TrackJot v2 - Claude Code Guide
 
 Read `AGENTS.md` completely before acting. `AGENTS.md` is the authoritative, model-agnostic implementation contract. This file tells Claude Code how to execute that contract efficiently and safely; it does not replace or weaken any requirement in `AGENTS.md`.
 
 ## Objective
 
-Build Playlistnotes v2 as a secure, provider-independent music journal:
+Build TrackJot v2 as a secure, provider-independent music journal:
 
-- Playlistnotes-owned accounts, not Spotify identity
+- TrackJot-owned accounts, not Spotify identity
 - first-class private notes and collections
 - deliberate unlisted/public sharing
 - internal UUIDs for recordings and mappings to provider IDs
@@ -47,16 +47,16 @@ Use these defaults unless the user explicitly decides otherwise:
 - Vitest/Testing Library and Playwright
 - `/api/v1` bounded to core native-relevant endpoints; broad OpenAPI is post-core
 - GitHub Actions CI, which also **builds the deployable artifact** — the droplet only runs it
-- DigitalOcean droplet at `127.0.0.1:3001` under pm2 `playlistnotes`, alongside but never touching MKDb on port 3000; **droplet-local PostgreSQL 16 with self-built encrypted off-host backups** — Managed PostgreSQL was considered and rejected on cost for a product with no users yet
+- DigitalOcean droplet at `127.0.0.1:3001` under pm2 `trackjot`, alongside but never touching MKDb on port 3000; **droplet-local PostgreSQL 16 with self-built encrypted off-host backups** — Managed PostgreSQL was considered and rejected on cost for a product with no users yet
 - Sentry and PostHog only when credentials are supplied
 
 Do not introduce React Native, E2EE, billing, collaboration, microservices, Kubernetes, or automatic Spotify synchronization during the rescue sprint. Artist and track pages, collaborative collections, album pages, and cross-provider enrichment are **wanted but deferred** — see the recorded backlog in `AGENTS.md` §16.
 
 ## Non-negotiable Spotify boundary
 
-The five-user cap applies to Spotify-authenticated users, not Playlistnotes accounts or public links/Embeds. Implement the following capability boundary exactly:
+The five-user cap applies to Spotify-authenticated users, not TrackJot accounts or public links/Embeds. Implement the following capability boundary exactly:
 
-- Spotify track URL/URI: resolve/create a Playlistnotes recording and allow a note without Spotify OAuth. Basic Embed metadata is best-effort; minimal user-supplied metadata is the fallback.
+- Spotify track URL/URI: resolve/create a TrackJot recording and allow a note without Spotify OAuth. Basic Embed metadata is best-effort; minimal user-supplied metadata is the fallback.
 - Public Spotify playlist URL: **imports the collection** (reversed 2026-08-10 — Client Credentials enumerates user-created public playlists without any user OAuth). A playlist that genuinely cannot be enumerated — Spotify's own editorial playlists, or anything private — creates **nothing**, and says why, offering CSV import. Apple Music serves its editorial playlists and needs a developer token for playlists at all. The invariant that survives: a collection is created only from an enumerated tracklist or an uploaded file, never inferred from a link alone.
 - Playlist contents: accept an Exportify-compatible or neutral user-supplied CSV as an ordered snapshot.
 - Spotify albums/artists: defer first-class capture until the core track workflow is proven.
@@ -116,11 +116,11 @@ Follow the detailed phase plan and exit criteria in `AGENTS.md` §12 (~15 workin
 ### Phase C - secure note vertical slice
 
 - Parse a Spotify or Apple Music track URL without user OAuth.
-- Resolve or create a recording with a Playlistnotes UUID.
+- Resolve or create a recording with a TrackJot UUID.
 - **Consult the database before any provider call.** This is the rate-limit guarantee, and it is asserted by counting calls in `no-network-on-known-track.test.ts` rather than assumed.
 - Prefer the provider API (Spotify Client Credentials, Apple's public iTunes lookup) so artists, album and ISRC are linked from identifiers; fall back to oEmbed, then to user-supplied title/artist. A single pasted track must produce the same row as importing the album containing it — both go through `lib/music/persist-track.ts`.
 - Create/edit/delete a private note.
-- Support an optional Playlistnotes collection-item context so notes about the same recording in different playlists do not lose their meaning.
+- Support an optional TrackJot collection-item context so notes about the same recording in different playlists do not lose their meaning.
 - Enforce ownership in server queries.
 - Add cross-user denial tests.
 
@@ -137,7 +137,7 @@ Follow the detailed phase plan and exit criteria in `AGENTS.md` §12 (~15 workin
 ### Phase E - sharing and launch
 
 - Add private/unlisted/public visibility.
-- Create stable Playlistnotes-owned public URLs.
+- Create stable TrackJot-owned public URLs.
 - Ensure publishing a collection never implicitly publishes private notes.
 - Add user-scoped note search.
 - Verify responsive and accessible workflows.

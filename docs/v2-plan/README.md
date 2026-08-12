@@ -4,7 +4,7 @@
 
 1. **`/AGENTS.md`** — the authoritative, model-agnostic implementation contract.
 2. **`/CLAUDE.md`** — a Claude Code adapter for that contract. It never overrides `AGENTS.md`.
-3. **`playlistnotes-v2-report.html`** (this directory) — narrative rationale. **Non-normative.**
+3. **`trackjot-v2-report.html`** (this directory) — narrative rationale. **Non-normative.**
 
 ## About the report
 
@@ -25,4 +25,4 @@ Do not edit the report to match. It is a dated artifact; the divergences above a
 
 ## Source of record
 
-The pristine originals live outside this repository at `~/Documents/playlistnotes-v2/`. The copies here are the reconciled, authoritative versions.
+The pristine originals live outside this repository at `~/Documents/trackjot-v2/`. The copies here are the reconciled, authoritative versions.

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Hourly encrypted backup of the Playlistnotes database.
+# Hourly encrypted backup of the TrackJot database.
 #
 # This exists because Managed PostgreSQL was rejected on cost. That was a
 # reasonable trade for a product with no users, but it means the automated
@@ -19,20 +19,20 @@
 #   - **The dump is verified before it is kept.** A truncated dump that still
 #     exits zero is the classic way this goes wrong, so the plaintext is checked
 #     for pg_dump's own terminator before it is encrypted.
-#   - **Never touch MKDb.** Only the `playlistnotes` database is read.
+#   - **Never touch MKDb.** Only the `trackjot` database is read.
 #
 # Install: /usr/local/bin/pn-backup.sh, mode 0755, run hourly from cron.
 
 set -euo pipefail
 
-DB_NAME="${PN_DB_NAME:-playlistnotes}"
-DB_USER="${PN_DB_USER:-playlistnotes}"
-BACKUP_DIR="${PN_BACKUP_DIR:-/var/backups/playlistnotes}"
+DB_NAME="${PN_DB_NAME:-trackjot}"
+DB_USER="${PN_DB_USER:-trackjot}"
+BACKUP_DIR="${PN_BACKUP_DIR:-/var/backups/trackjot}"
 PASS_FILE="${PN_PASS_FILE:-/root/.pn-db-backup-pass}"
 LOG_FILE="${PN_LOG_FILE:-/var/log/pn-backup.log}"
 STATUS_FILE="${PN_STATUS_FILE:-/var/lib/pn-backup/last-status}"
 
-# Set to an rclone remote:path once Drive is configured, e.g. "pndrive:playlistnotes-backups".
+# Set to an rclone remote:path once Drive is configured, e.g. "pndrive:trackjot-backups".
 RCLONE_DEST="${PN_RCLONE_DEST:-}"
 
 HOURLY_KEEP="${PN_HOURLY_KEEP:-24}"

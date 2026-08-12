@@ -26,7 +26,7 @@ export default async function Home() {
 
   return (
     <main>
-      <p className="eyebrow">Playlistnotes</p>
+      <p className="eyebrow">TrackJot</p>
       <h1>A place to keep what music means to you.</h1>
       <p className="lede">
         Paste a track link and write what you actually thought. Your notes stay
@@ -48,7 +48,7 @@ export default async function Home() {
         <div>
           <h2>No Spotify account needed</h2>
           <p className="note">
-            Sign in with an email code or Google. Playlistnotes owns your account,
+            Sign in with an email code or Google. TrackJot owns your account,
             so your notes do not belong to a streaming service and do not vanish
             when you leave one.
           </p>
@@ -72,7 +72,7 @@ export default async function Home() {
 
       <footer className="landing-foot">
         <p className="note">
-          <Link href="/sign-in">Sign in</Link> · Playlistnotes is a personal
+          <Link href="/sign-in">Sign in</Link> · TrackJot is a personal
           project by Samah.
         </p>
       </footer>

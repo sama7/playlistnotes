@@ -3,7 +3,7 @@ import { prisma } from "@/lib/db";
 import { normalizedKey } from "@/lib/music/normalize";
 
 /**
- * Resolving a captured track to a Playlistnotes recording.
+ * Resolving a captured track to a TrackJot recording.
  *
  * The governing rule (AGENTS.md §7): **a false merge is worse than a duplicate.**
  * A duplicate is invisible while notes are private and fixable later with

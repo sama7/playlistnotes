@@ -41,7 +41,7 @@ proxy-loop hang; nothing blocked on a credential or an account.
 | DNS | GoDaddy, records currently configured for Heroku |
 | Droplet | 1 vCPU / 2 GB RAM / 50 GB disk, NYC1, $12/mo (resized Aug 7 from 1 GB). Address kept out of this public repo; it is in the DigitalOcean console. |
 | Droplet co-tenant | **MKDb** — pm2 `server` + `mankbot`, nginx → Node on `localhost:3000`, local PostgreSQL 16 over UNIX socket, Let's Encrypt, weekly crontab. **Never modify any of it.** |
-| Playlistnotes port | `127.0.0.1:3001`, pm2 process `playlistnotes`, own nginx vhost and certificate |
+| TrackJot port | `127.0.0.1:3001`, pm2 process `trackjot`, own nginx vhost and certificate |
 | Legacy data | 34 user documents, 33 notes, nothing written since 2024 |
 | Spotify cohort | 20 users, grandfathered above the current 5-user cap; no further users can be added |
 | Local toolchain | Node v24.1.0, npm 11.3.0, PostgreSQL 16.9 (Homebrew) on :5432, mongosh, mongodump, heroku CLI. No Docker, no `gh`. |
@@ -164,7 +164,7 @@ three regression tests.
 
 ## The premise that turned out to be wrong — August 9–10
 
-`AGENTS.md` §4.4 held that a playlist link must create nothing, because Playlistnotes could not read a playlist's tracks without user OAuth. **That was never tested, and it was false.**
+`AGENTS.md` §4.4 held that a playlist link must create nothing, because TrackJot could not read a playlist's tracks without user OAuth. **That was never tested, and it was false.**
 
 Client Credentials authenticates the *application*, so the five-user Development Mode cap never engages. Measured against the live API:
 
@@ -223,15 +223,15 @@ instead. SuperTokens removes the handshake and this can then move into CI.
 
 ## First droplet deployment — running, August 10 2026
 
-The app runs on the droplet at `127.0.0.1:3001` under pm2 `playlistnotes`,
+The app runs on the droplet at `127.0.0.1:3001` under pm2 `trackjot`,
 behind its own nginx vhost, against a droplet-local PostgreSQL. MKDb was not
 touched: its vhost, certificate, database, and port 3000 are unchanged and
 verified healthy (`https://mkdb.co → 200`) after every step.
 
 - Node 24.9.0 installed isolated at `/opt/node24`; the system Node stays 18.19.1 for MKDb.
-- Role and database `playlistnotes`; all migrations applied via `prisma migrate deploy` — 17 tables.
+- Role and database `trackjot`; all migrations applied via `prisma migrate deploy` — 17 tables.
 - `.env` written 0600, piped from the local file over ssh so no secret was ever displayed.
-- Artifact built locally and rsynced to `/srv/playlistnotes/current`.
+- Artifact built locally and rsynced to `/srv/trackjot/current`.
 - nginx vhost from `deploy/nginx/v2.playlistnotes.io.conf`, enabled and reloaded.
 - Memory after deployment: 1.2 Gi available of 1.9 Gi, all three pm2 processes online.
 
@@ -400,7 +400,7 @@ against the broken file kept as a backup.
 
 ### Backups, end to end
 
-Off-host copies are live on the `playlistnotesapp@gmail.com` Drive, using their
+Off-host copies are live on the `trackjotapp@gmail.com` Drive, using their
 own Google OAuth client rather than rclone's shared one (which rclone warns is
 being retired during 2026) and `drive.file` scope rather than full `drive`.
 
@@ -445,6 +445,49 @@ matters.
 - **The droplet is a single point of failure.** With Managed PostgreSQL rejected on cost, the database lives on the same 2 GB box as MKDb and the app. Losing the droplet loses everything not yet pushed off-host, which is exactly why the hourly encrypted backup job is a pre-invite requirement rather than a nicety. If Managed PostgreSQL is ever adopted, note that Prisma then needs `DATABASE_URL` (pooled) **and** `DIRECT_URL` (direct) — a transaction-mode pooler breaks `migrate deploy`.
 - **Apex DNS at cutover.** GoDaddy has no ALIAS/ANAME record, so the apex is probably using domain forwarding to `www`. Verify in the panel before moving traffic.
 
+## Rebrand to TrackJot — 2026-08-12
+
+**The old name had become architecturally false.** "Playlistnotes" names a
+container inside one provider, which is precisely the dependency v2 was built to
+remove — and it mis-describes the data model, since notes attach to *recordings*
+with playlist context as an optional foreign key. Every telling of the project's
+story would have had to open by explaining why the name was wrong.
+
+Done in one pass, while production held **0 users and 0 notes** — the cheapest
+this would ever be, and the argument for doing it now rather than "after launch".
+
+| Renamed | Kept deliberately |
+| --- | --- |
+| All user-facing strings, page title, share-page attribution | Every historical statement about v1: the Heroku app, its MongoDB, `sama7/playlistnotes`, the grandfathered cohort |
+| npm package and lock file | Prisma migration history |
+| Outbound Spotify user agent → `TrackJot/2.0 (+https://trackjot.com)` | The archived v2-plan report, a dated artefact |
+| PostgreSQL role and database → `trackjot` | The Drive backup account and rclone remote name |
+| pm2 process, `/srv/trackjot`, `/var/backups/trackjot`, cron file | `v2.playlistnotes.io` until the domain cutover |
+| Drive backup path → `trackjot-backups` | `PN_*` operational variable names |
+
+The rename script guarded historical lines by pattern, and two things still
+slipped through and were caught by reading the diff rather than by the guard:
+it rewrote **v1's own `config.env`** (`DEV_DB_NAME`, which would have broken v1
+had it been run) and one multi-line comment where the sentence naming v1 sat on
+the line above the sentence naming the product. Both restored. A line-based
+guard cannot see a paragraph.
+
+`app/brand.test.ts` now asserts the new name on every rendering surface, the
+document title, the share attribution, the user agent, and the package name — so
+a partial rebrand fails a test instead of being discovered months later on a
+route nobody visits.
+
+**Infrastructure retired, not orphaned:** a final encrypted dump of the old
+database was taken before dropping it, the role and `/srv/playlistnotes` removed,
+and the old backup directory deleted. MKDb verified healthy at every step.
+
+**Sign in with Apple** is available (the Developer account exists, and Clerk
+Hobby allows three social connections). Deliberately not enabled yet: it binds to
+a verified domain, so doing it before `trackjot.com` is canonical means doing it
+twice. It also carries a real caveat — Apple's "Hide My Email" relay address will
+not match a user's Google or email identity, so Clerk cannot auto-link it, which
+is the same split-account failure that ruled out SuperTokens.
+
 ## What is left before a public release
 
 | # | Work | Est. | Blocked? |
@@ -465,7 +508,7 @@ The question was investigated properly (Sol's report, independently re-verified
 against primary sources), and **the assumption behind it was backwards.**
 
 The premise was that SuperTokens would be cheaper and more independent. It is
-neither, for what Playlistnotes actually offers:
+neither, for what TrackJot actually offers:
 
 - SuperTokens makes **account linking a paid feature with a $100/month
   minimum** — verified twice, on the pricing page and in the enterprise
@@ -473,7 +516,7 @@ neither, for what Playlistnotes actually offers:
   appear and `WEBAUTHN` does not.
 - **Clerk Pro is $25/month and includes it.** SuperTokens is 4× the price for
   the feature set we want.
-- Playlistnotes offers email OTP **and** Google. Without linking, one person
+- TrackJot offers email OTP **and** Google. Without linking, one person
   using both becomes two identities, and with `users.auth_subject` unique, two
   accounts and a split journal. The DIY workaround — linking on matching email —
   is already forbidden by §9, and was right to be.

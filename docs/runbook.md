@@ -1,10 +1,10 @@
 # Runbook
 
-Operational procedures for Playlistnotes v2 on the DigitalOcean droplet.
+Operational procedures for TrackJot v2 on the DigitalOcean droplet.
 
 The droplet also runs **MKDb** — pm2 `server` and `mankbot`, nginx on port 3000,
 its own PostgreSQL databases, its own certificate, and a weekly crontab. **None
-of it is ever modified.** Everything below touches only Playlistnotes-owned
+of it is ever modified.** Everything below touches only TrackJot-owned
 processes, files, databases, and vhosts.
 
 ---
@@ -13,14 +13,14 @@ processes, files, databases, and vhosts.
 
 | Thing | Where |
 | --- | --- |
-| Application | `/srv/playlistnotes/current`, pm2 process `playlistnotes` |
+| Application | `/srv/trackjot/current`, pm2 process `trackjot` |
 | Entry point | `scripts/start-standalone.cjs` — **never `server.js` directly** |
 | Node | `/opt/node24` (isolated; the system Node stays 18.19.1 for MKDb) |
 | Port | `127.0.0.1:3001`, reachable only through nginx |
 | nginx vhost | `/etc/nginx/sites-available/v2.playlistnotes.io` |
 | Certificate | Let's Encrypt, `v2.playlistnotes.io`, auto-renewing |
-| Database | droplet-local PostgreSQL 16, database and role both `playlistnotes` |
-| Backups | `/var/backups/playlistnotes/{hourly,daily}` |
+| Database | droplet-local PostgreSQL 16, database and role both `trackjot` |
+| Backups | `/var/backups/trackjot/{hourly,daily}` |
 | Backup log | `/var/log/pn-backup.log`, last result in `/var/lib/pn-backup/last-status` |
 
 ## Deploying
@@ -30,11 +30,11 @@ CI builds the artifact; the droplet only runs it. From a clean checkout:
 ```bash
 npm run build
 # package: .next/standalone + .next/static + public + scripts/ + prisma/
-rsync -az --delete --exclude '.env' artifact/ root@<droplet>:/srv/playlistnotes/current/
-ssh root@<droplet> 'cd /srv/playlistnotes/current && /opt/node24/bin/node scripts/check-env.mjs .env'
-ssh root@<droplet> 'cd /srv/playlistnotes/current && npx prisma migrate deploy'
-ssh root@<droplet> 'pm2 restart playlistnotes --update-env'
-ssh root@<droplet> 'cd /srv/playlistnotes/current && /opt/node24/bin/node scripts/smoke.js https://v2.playlistnotes.io'
+rsync -az --delete --exclude '.env' artifact/ root@<droplet>:/srv/trackjot/current/
+ssh root@<droplet> 'cd /srv/trackjot/current && /opt/node24/bin/node scripts/check-env.mjs .env'
+ssh root@<droplet> 'cd /srv/trackjot/current && npx prisma migrate deploy'
+ssh root@<droplet> 'pm2 restart trackjot --update-env'
+ssh root@<droplet> 'cd /srv/trackjot/current && /opt/node24/bin/node scripts/smoke.js https://v2.playlistnotes.io'
 ```
 
 `check-env.mjs` validates the **shape** of every configured secret and never
@@ -65,8 +65,8 @@ request to itself and each one hangs for 30 seconds before a 500.
 
 ## Backups
 
-Hourly, from `/etc/cron.d/playlistnotes-backup` at 17 past. Each run dumps the
-`playlistnotes` database, verifies the dump is complete rather than truncated,
+Hourly, from `/etc/cron.d/trackjot-backup` at 17 past. Each run dumps the
+`trackjot` database, verifies the dump is complete rather than truncated,
 gzips it, and encrypts it with AES-256 **before** anything leaves the box. One
 copy per UTC day is promoted to `daily/`. Retention is 24 hourly and 30 daily.
 
@@ -80,13 +80,13 @@ tail -20 /var/log/pn-backup.log
 
 ```bash
 # Rehearsal — restores into a scratch database, never the live one.
-/usr/local/bin/pn-restore.sh /var/backups/playlistnotes/daily/pn-<date>.sql.gz.enc
+/usr/local/bin/pn-restore.sh /var/backups/trackjot/daily/pn-<date>.sql.gz.enc
 
 # Real recovery, deliberately awkward:
-PN_ALLOW_LIVE=yes /usr/local/bin/pn-restore.sh <archive> playlistnotes
+PN_ALLOW_LIVE=yes /usr/local/bin/pn-restore.sh <archive> trackjot
 ```
 
-The script refuses to write to `playlistnotes` without `PN_ALLOW_LIVE=yes`,
+The script refuses to write to `trackjot` without `PN_ALLOW_LIVE=yes`,
 because restoring over production is a decision someone should make on purpose
 at 3am while tired.
 
@@ -97,9 +97,9 @@ ciphertext was confirmed to contain no readable SQL.
 
 ### Off-host copies — configured 2026-08-11
 
-Backups are mirrored to Google Drive on the `playlistnotesapp@gmail.com`
-account, remote `pndrive`, path `playlistnotes-backups/{hourly,daily}`.
-`PN_RCLONE_DEST` is set in `/etc/cron.d/playlistnotes-backup`, so every
+Backups are mirrored to Google Drive on the `trackjotapp@gmail.com`
+account, remote `pndrive`, path `trackjot-backups/{hourly,daily}`.
+`PN_RCLONE_DEST` is set in `/etc/cron.d/trackjot-backup`, so every
 scheduled run uploads. Only ciphertext crosses the wire — Drive never holds a
 readable note body.
 
@@ -129,8 +129,8 @@ upload.
 
 ```bash
 rclone about pndrive:                              # quota
-rclone ls pndrive:playlistnotes-backups            # what is actually stored
-rclone lsf pndrive:playlistnotes-backups/hourly | sort | tail -1
+rclone ls pndrive:trackjot-backups            # what is actually stored
+rclone lsf pndrive:trackjot-backups/hourly | sort | tail -1
 ```
 
 ### The passphrase stays on the droplet
@@ -170,8 +170,8 @@ database is unreachable — the state a bare 200 would hide.
 
 ## If the site is down
 
-1. `pm2 status` — is `playlistnotes` online?
-2. `pm2 logs playlistnotes --lines 50`
+1. `pm2 status` — is `trackjot` online?
+2. `pm2 logs trackjot --lines 50`
 3. `curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3001/api/health` —
    isolates nginx from the app.
 4. `nginx -t && systemctl status nginx`

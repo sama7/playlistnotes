@@ -12,7 +12,7 @@ export default function setup() {
   if (!url) {
     throw new Error(
       "TEST_DATABASE_URL is not set. Create a disposable database " +
-        "(createdb playlistnotes_test) and set it in .env.",
+        "(createdb trackjot_test) and set it in .env.",
     );
   }
 

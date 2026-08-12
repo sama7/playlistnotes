@@ -39,7 +39,7 @@ export default async function SharedNotePage({
 
   return (
     <main>
-      <p className="eyebrow">Shared from Playlistnotes</p>
+      <p className="eyebrow">Shared from TrackJot</p>
       <h1>{title}</h1>
       <p className="lede">{artist}</p>
 

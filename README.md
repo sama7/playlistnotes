@@ -1,4 +1,4 @@
-# Playlistnotes
+# TrackJot
 
 A place to keep what music means to you — the detail, the trivia, the memory
 attached to a song. Notes belong to you, are private by default, and are shared
@@ -22,7 +22,7 @@ v1 made Spotify identity *be* Playlistnotes identity. It holds 20 grandfathered
 users from when the cap was higher, and **it cannot onboard a twenty-first**.
 That is not a bug to fix; it is the architecture.
 
-v2 inverts the relationship. **Playlistnotes owns its accounts, notes,
+v2 inverts the relationship. **TrackJot owns its accounts, notes,
 collections, privacy rules, public URLs, and internal music identifiers.**
 Spotify becomes one optional source among several. The core acceptance suite
 passes with no Spotify credentials configured at all, and CI enforces that by
@@ -45,7 +45,7 @@ different owners, at 4, 42, and 50 tracks. Only Spotify's *own editorial*
 playlists (`37i9…`) return 404 to a Development Mode app.
 
 That single finding produced the largest feature in the product, and it is why
-the name means something again: Playlistnotes annotates playlists, without
+the name means something again: TrackJot annotates playlists, without
 anyone logging into Spotify.
 
 ## What it does
