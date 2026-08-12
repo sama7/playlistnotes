@@ -1,4 +1,6 @@
+import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
+import type { Result } from "axe-core";
 import { signIn, signUp, testEmail } from "./support/auth";
 import { CN_TOWER, DARLING_I, writeNote } from "./support/notes";
 
@@ -26,6 +28,18 @@ test.skip(
 
 // Sign-up involves a real verification round trip; the default 30s is not enough.
 test.describe.configure({ timeout: 120_000 });
+
+const AXE_TAGS = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"];
+
+/** Print what failed. A bare count is useless when this fails in CI. */
+function report(violations: Result[]): void {
+  if (violations.length === 0) return;
+  console.log(
+    violations
+      .map((v) => `${v.id} (${v.impact}): ${v.help}\n  ${v.nodes[0]?.html ?? ""}`)
+      .join("\n"),
+  );
+}
 
 test.describe("the core loop", () => {
   test("sign up, write a note, and see it listed", async ({ page }) => {
@@ -170,5 +184,58 @@ test.describe("sharing is deliberate", () => {
     expect(after?.status()).toBeGreaterThanOrEqual(400);
 
     await anon.close();
+  });
+});
+
+test.describe("accessibility of the signed-in surfaces", () => {
+  /**
+   * The anonymous pages are nearly static; these are where the real complexity
+   * lives — a capture form, inline editors, chips, a tracklist, a share panel.
+   * Axe finds perhaps a third of real problems, so this is a floor, not a claim
+   * the pages are pleasant with a screen reader. That pass is still manual.
+   */
+  test("the notes page has no detectable violations, empty or populated", async ({ page }) => {
+    await signUp(page, testEmail("a11y"));
+
+    const empty = await new AxeBuilder({ page }).withTags(AXE_TAGS).analyze();
+    report(empty.violations);
+    expect(empty.violations).toEqual([]);
+
+    await writeNote(page, { ...CN_TOWER, body: "a note with tags and a share control" });
+
+    const populated = await new AxeBuilder({ page }).withTags(AXE_TAGS).analyze();
+    report(populated.violations);
+    expect(populated.violations).toEqual([]);
+  });
+
+  test("the collections page has no detectable violations", async ({ page }) => {
+    await signUp(page, testEmail("a11y-collections"));
+    await page.goto("/collections");
+
+    const results = await new AxeBuilder({ page }).withTags(AXE_TAGS).analyze();
+    report(results.violations);
+    expect(results.violations).toEqual([]);
+  });
+
+  test("every control on the notes page is keyboard reachable", async ({ page }) => {
+    await signUp(page, testEmail("a11y-keys"));
+    await writeNote(page, { ...CN_TOWER, body: "reachable by keyboard alone" });
+
+    const seen = new Set<string>();
+    for (let i = 0; i < 25; i++) {
+      await page.keyboard.press("Tab");
+      const label = await page.evaluate(() => {
+        const el = document.activeElement as HTMLElement | null;
+        if (!el || el === document.body) return null;
+        return `${el.tagName.toLowerCase()}:${(el.getAttribute("id") ?? el.textContent ?? "").trim().slice(0, 24)}`;
+      });
+      if (label) seen.add(label);
+    }
+
+    const joined = [...seen].join(" | ").toLowerCase();
+    // The three things a keyboard user must be able to do here.
+    expect(joined).toContain("link");
+    expect(joined).toContain("body");
+    expect(joined).toMatch(/share|save|delete/);
   });
 });

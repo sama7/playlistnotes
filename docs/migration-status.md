@@ -7,7 +7,7 @@ Durable handoff between sessions. Read this before relying on chat context. Upda
 **Checkpoint 1a: PASSED.** The schema review produced two corrections, both now merged — `album_artists` was built, and the `Provider` enum was cut back to authoritative sources.
 **Next milestone:** the Clerk → SuperTokens migration, which is the last piece of scope with a design decision left in it. Everything after it is verification and polish.
 
-**Progress: roughly 88%.** Estimated 6–9 hours remain to a public release.
+**Progress: roughly 94%.** Estimated 2–4 hours remain to a public release.
 
 The remaining work is an auth-provider migration, the browser specs that depend
 on it, and an accessibility pass. No unknowns of the kind that produced the
@@ -408,7 +408,7 @@ The whole chain was rehearsed, not just the upload: a probe row written to the
 live database, backed up, encrypted, uploaded, downloaded into a directory
 holding no other copy, decrypted, and restored — probe row present, 17 tables.
 
-**Test totals: 257.** 110 unit, 137 integration, 10 Playwright.
+**Test totals: 276.** 110 unit, 137 integration, 29 Playwright.
 
 ## Not yet done — blocked on the user
 
@@ -431,8 +431,9 @@ holding no other copy, decrypted, and restored — probe row present, 17 tables.
 
 | # | Work | Est. | Blocked? |
 | --- | --- | --- | --- |
-| 1 | **Signed-in Playwright specs** — happy path and cross-user privacy. Unblocked by the auth decision. | 1–2 h | no |
-| 2 | **Upgrade to Clerk Pro and configure sessions** — ~90-day inactivity timeout, absolute maximum disabled or a year. Do this at the invite, not before. Enable passkeys once the production domain is settled. | 30 min | needs the owner's card |
+| 1 | **Upgrade to Clerk Pro and configure sessions** — ~90-day inactivity timeout, absolute maximum disabled or a year. At the invite, not before. Enable passkeys once the production domain is settled. | 30 min | needs the owner's card |
+| 2 | **Screen-reader pass over the signed-in surfaces** — axe reports zero violations on every page including populated ones, but that is a floor. VoiceOver through capture, inline editing, and the share panel is still manual work. | 1 h | no |
+| 3 | **Move the e2e suite into CI** — deliberately not done tonight. A real browser follows Clerk's development handshake out to accounts.dev and CI holds only a placeholder secret; adding a step I could not verify locally is the mistake the docker packaging step already taught. Needs `CLERK_SECRET_KEY` as a repository secret, then verification on a real run. | 1 h | needs a repo secret |
 | 3 | **Responsive and accessibility pass** — keyboard traversal of the tracklist and its inline editors, focus management, contrast, and a screen-reader pass over the share panel. | 1–2 h | no |
 | 4 | **Invite ~10 testers.** | — | no |
 

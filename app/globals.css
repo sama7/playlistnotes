@@ -2,6 +2,10 @@
   --bg: #ffffff;
   --fg: #16161a;
   --muted: #6b6b76;
+  /* --muted on --line is 4.15:1 — below the 4.5:1 AA floor for text this size.
+     Chips and other elements that sit ON --line use this instead: 6.8:1 light,
+     5.1:1 dark. Caught by axe against a populated notes page, not by eye. */
+  --muted-on-line: #4a4a53;
   --line: #e4e4e9;
   --accent: #3b4cca;
   --warn-bg: #fff6e5;
@@ -13,6 +17,7 @@
     --bg: #121215;
     --fg: #ececf0;
     --muted: #9a9aa6;
+    --muted-on-line: #a8a8b4;
     --line: #2a2a31;
     --accent: #93a0ff;
     --warn-bg: #2c2413;
@@ -214,7 +219,7 @@ ul.notes { list-style: none; padding: 0; margin: 0; display: flex; flex-directio
 .note-head { display: flex; justify-content: space-between; gap: 1rem; align-items: flex-start; }
 .inline-edit { display: flex; flex-direction: column; gap: 0.5rem; }
 
-.chip.private { background: var(--line); color: var(--muted); }
+.chip.private { background: var(--line); color: var(--muted-on-line); }
 .chip.unlisted { background: #fff4d6; color: #7a5800; border-color: #7a5800; }
 .chip.public { background: #dcf5e7; color: #16603a; border-color: #16603a; }
 @media (prefers-color-scheme: dark) {
