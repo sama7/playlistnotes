@@ -40,9 +40,20 @@ describe("the rebrand is complete on every user-facing surface", () => {
     });
   }
 
-  it("the document title is TrackJot", async () => {
+  it("the document title and its template are TrackJot", async () => {
     const layout = await readFile(`${appDir}layout.tsx`, "utf8");
-    expect(layout).toContain('title: "TrackJot"');
+    // A template rather than a bare string, so a page setting its own title
+    // reads "Your notes · TrackJot" without repeating the brand everywhere.
+    expect(layout).toContain('default: "TrackJot"');
+    expect(layout).toContain('template: "%s · TrackJot"');
+  });
+
+  it("link previews name TrackJot", async () => {
+    const layout = await readFile(`${appDir}layout.tsx`, "utf8");
+    expect(layout).toContain('siteName: "TrackJot"');
+    const og = await readFile(`${appDir}opengraph-image.tsx`, "utf8");
+    expect(og).toContain("TRACKJOT");
+    expect(og).not.toMatch(/playlistnotes/i);
   });
 
   it("shared pages attribute to TrackJot", async () => {
