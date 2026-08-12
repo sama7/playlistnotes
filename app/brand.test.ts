@@ -22,6 +22,18 @@ import { describe, expect, it } from "vitest";
 const appDir = fileURLToPath(new URL(".", import.meta.url));
 const root = fileURLToPath(new URL("..", import.meta.url));
 
+/**
+ * Strip comments before asserting.
+ *
+ * Comments legitimately name the old product — explaining *why* generated
+ * assets survive a rename requires saying what the rename was from. Only what
+ * reaches a screen is held to the new name, and a check that cannot tell the
+ * two apart would push people to delete useful history to satisfy a test.
+ */
+function code(source: string): string {
+  return source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
+}
+
 /** Files whose contents reach a user's screen. */
 const USER_FACING = [
   "layout.tsx",
@@ -36,7 +48,7 @@ describe("the rebrand is complete on every user-facing surface", () => {
   for (const file of USER_FACING) {
     it(`${file} shows no trace of the old name`, async () => {
       const source = await readFile(`${appDir}${file}`, "utf8");
-      expect(source).not.toMatch(/playlistnotes/i);
+      expect(code(source)).not.toMatch(/playlistnotes/i);
     });
   }
 
@@ -53,7 +65,7 @@ describe("the rebrand is complete on every user-facing surface", () => {
     expect(layout).toContain('siteName: "TrackJot"');
     const og = await readFile(`${appDir}opengraph-image.tsx`, "utf8");
     expect(og).toContain("TRACKJOT");
-    expect(og).not.toMatch(/playlistnotes/i);
+    expect(code(og)).not.toMatch(/playlistnotes/i);
   });
 
   it("shared pages attribute to TrackJot", async () => {
@@ -74,7 +86,7 @@ describe("outbound identity", () => {
     const source = await readFile(`${root}/lib/music/spotify/resolve-short-link.ts`, "utf8");
     expect(source).toMatch(/TrackJot\/\d/);
     expect(source).toContain("trackjot.com");
-    expect(source).not.toMatch(/playlistnotes/i);
+    expect(code(source)).not.toMatch(/playlistnotes/i);
   });
 
   it("the package is named trackjot", async () => {
