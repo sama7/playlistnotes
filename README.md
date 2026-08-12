@@ -277,7 +277,7 @@ make the documentation lie about its own history.
 
 Roughly nine tenths of the way to a public release. **240+ tests**: unit,
 integration against a real PostgreSQL, and Playwright against the deployed host.
-Live, gated, and `noindex` at `v2.playlistnotes.io`.
+Live, gated, and `noindex` at `https://trackjot.com`.
 
 Remaining before an invite: an auth-provider migration, signed-in browser specs,
 and an accessibility pass. Details and estimates in

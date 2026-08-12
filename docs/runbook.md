@@ -17,8 +17,9 @@ processes, files, databases, and vhosts.
 | Entry point | `scripts/start-standalone.cjs` — **never `server.js` directly** |
 | Node | `/opt/node24` (isolated; the system Node stays 18.19.1 for MKDb) |
 | Port | `127.0.0.1:3001`, reachable only through nginx |
-| nginx vhost | `/etc/nginx/sites-available/v2.playlistnotes.io` |
-| Certificate | Let's Encrypt, `v2.playlistnotes.io`, auto-renewing |
+| nginx vhost | `/etc/nginx/sites-available/trackjot.com` |
+| Old host | `v2.playlistnotes.io` — 301s everything to `trackjot.com`, certificate still renewing so old share links keep working |
+| Certificate | Let's Encrypt, `trackjot.com` + `www.trackjot.com`, auto-renewing |
 | Database | droplet-local PostgreSQL 16, database and role both `trackjot` |
 | Backups | `/var/backups/trackjot/{hourly,daily}` |
 | Backup log | `/var/log/pn-backup.log`, last result in `/var/lib/pn-backup/last-status` |
@@ -34,7 +35,7 @@ rsync -az --delete --exclude '.env' artifact/ root@<droplet>:/srv/trackjot/curre
 ssh root@<droplet> 'cd /srv/trackjot/current && /opt/node24/bin/node scripts/check-env.mjs .env'
 ssh root@<droplet> 'cd /srv/trackjot/current && npx prisma migrate deploy'
 ssh root@<droplet> 'pm2 restart trackjot --update-env'
-ssh root@<droplet> 'cd /srv/trackjot/current && /opt/node24/bin/node scripts/smoke.js https://v2.playlistnotes.io'
+ssh root@<droplet> 'cd /srv/trackjot/current && /opt/node24/bin/node scripts/smoke.js https://trackjot.com'
 ```
 
 `check-env.mjs` validates the **shape** of every configured secret and never
@@ -156,10 +157,17 @@ certbot renew --dry-run
 The vhost is certbot-managed. Do not hand-edit the `# managed by Certbot` lines;
 change things through certbot and re-pull the file into `deploy/nginx/`.
 
+**Two certificates are live and both matter.** `trackjot.com` serves the
+product; `v2.playlistnotes.io` exists only to redirect, and its certificate must
+keep renewing — if it lapses, every share link created before the rename fails
+with a TLS warning instead of redirecting, which is worse than having no
+redirect at all. Its vhost therefore keeps an ACME challenge location above the
+redirect. Renewal was dry-run verified on 2026-08-12.
+
 ## Health
 
 ```bash
-curl -s https://v2.playlistnotes.io/api/health     # {"status":"ok"}
+curl -s https://trackjot.com/api/health     # {"status":"ok"}
 pm2 status
 free -h                                            # 2 GB shared with MKDb
 curl -s -o /dev/null -w '%{http_code}\n' https://mkdb.co/   # must stay 200

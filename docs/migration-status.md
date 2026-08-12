@@ -3,11 +3,11 @@
 Durable handoff between sessions. Read this before relying on chat context. Update it after every phase and before ending a substantial session.
 
 **Last updated:** August 12, 2026
-**Current phase:** Phases 2, 3 and 4 complete. Live over HTTPS at https://v2.playlistnotes.io, gated and `noindex`. Every core capability now has a surface.
+**Current phase:** Phases 2, 3 and 4 complete. Live over HTTPS at https://trackjot.com, gated and `noindex`. Every core capability now has a surface.
 **Checkpoint 1a: PASSED.** The schema review produced two corrections, both now merged — `album_artists` was built, and the `Provider` enum was cut back to authoritative sources.
 **Next milestone:** the Clerk → SuperTokens migration, which is the last piece of scope with a design decision left in it. Everything after it is verification and polish.
 
-**Progress: roughly 90%.** Estimated 4–6 hours remain to a public release. The number moved *down* from 94% because the rebrand added real scope (domain cutover, launch surfaces) and the audit found the invite gate did not exist.
+**Progress: roughly 94%.** Estimated 2–4 hours remain to a public release, and none of it is on the critical path for a tester actually using the product.
 
 The remaining work is an auth-provider migration, the browser specs that depend
 on it, and an accessibility pass. No unknowns of the kind that produced the
@@ -544,18 +544,38 @@ Repo renamed to `sama7/trackjot` by the owner; the local remote follows it. The
 `trackjot.com` nginx vhost is installed and verified serving on the Host header,
 with `www` 308ing to the apex. TLS waits on DNS.
 
-**DNS is not yet pointed at the droplet** — GoDaddy's authoritative nameservers
-still return the parking addresses. Mail is fully intact and must stay that way:
-Microsoft 365 MX, both DKIM selectors, SPF, `autodiscover`, and the
-`onmicrosoft` verification TXT.
+**The domain cutover is complete.** The apex A record landed after ~43 minutes,
+propagated to both GoDaddy nameservers and to Google and Cloudflare's resolvers,
+and `www` follows it through the existing CNAME — which is why no second A
+record was needed and the one that conflicted was correctly cancelled.
+
+- Certificate issued for `trackjot.com` **and** `www.trackjot.com`, expiring
+  2026-11-10 and auto-renewing.
+- `APP_BASE_URL=https://trackjot.com`, so every generated share link is now
+  canonical.
+- HTTP 301s to HTTPS; `www` 308s to the apex; HSTS, `noindex`, `nosniff`,
+  `DENY` all present on the canonical host.
+- **`v2.playlistnotes.io` now 301s everything to `trackjot.com`, preserving path
+  and query** — verified against `/n/<token>?x=1` and `/c/<token>?a=b&c=d`, which
+  is the case that actually matters, since a share token lives in the path.
+
+That old host is deliberately kept alive with its certificate renewing rather
+than switched off. Share links are the product's one durable public artifact; if
+that certificate lapses, every link created before the rename fails with a TLS
+warning instead of redirecting, which is worse than no redirect at all. Its
+vhost keeps an ACME challenge location above the redirect, and renewal was
+dry-run verified.
+
+Mail on `trackjot.com` is fully intact and was never touched: Microsoft 365 MX,
+both DKIM selectors, SPF, `autodiscover`, and the `onmicrosoft` verification TXT.
 
 ## What is left before a public release
 
 | # | Work | Est. | Blocked? |
 | --- | --- | --- | --- |
-| 1 | **TLS + domain cutover** — certbot for `trackjot.com` and `www`, switch `APP_BASE_URL`, add 301s from `v2.playlistnotes.io` preserving paths. | 30 min | **needs the apex A record** |
-| 2 | **Sign in with Apple** — configure the Services ID against the final domain. Note Apple's Hide-My-Email relay will not match a Google or email identity, so Clerk cannot auto-link it. | 45 min | after (1) |
-| 3 | **Move e2e into CI** — needs `CLERK_SECRET_KEY` (development) as a repository secret. Proven necessary, not assumed. | 45 min | **needs a repo secret** |
+| 1 | **Clerk production instance for `trackjot.com`** — the current keys belong to a development instance whose allowed origin is still the old host. Sign-in works today because Clerk development instances are permissive; a production instance needs its own DNS records, keys, and Google OAuth redirect URIs, and the publishable key is inlined at build time so CI's repository variable changes with it. | 1 h | **needs dashboard access** |
+| 2 | **Sign in with Apple** — Services ID and key in the Apple portal, then Clerk. Now unblocked by the canonical domain. Apple's Hide-My-Email relay will not match a Google or email identity, so Clerk cannot auto-link it. | 45 min | **needs dashboard access** |
+| 3 | **Move e2e into CI** — needs `CLERK_SECRET_KEY` (development) as a repository secret. Proven necessary by reproduction, not assumed. | 45 min | **needs a repo secret** |
 | 4 | **Screen-reader pass** over the signed-in surfaces. Axe reports zero violations everywhere including populated pages, but that is a floor. | 1 h | no |
 | 5 | **Clerk Pro** — ~90-day inactivity timeout, absolute maximum disabled, passkeys once the domain is canonical. | 30 min | **at invite time** |
 | 6 | **Drive backup account** — move to a TrackJot-owned Google account. | 30 min | **at invite time** |
