@@ -69,6 +69,11 @@ about. Tags are scoped per user, so your vocabulary is yours.
 **Import a CSV.** For the two things no API will serve: your private playlists,
 and Spotify's editorial ones.
 
+**Private preview.** The staging host is behind an invite gate that runs *before*
+authentication, so an uninvited visitor never reaches a sign-up form. Share links
+bypass it deliberately — someone sent a public note has no code and should not
+need one.
+
 ## Provider capabilities — measured, not assumed
 
 Every row here was verified against the live API rather than inferred from
@@ -256,9 +261,21 @@ leaving the box, mirrored to object storage, 24 hourly plus 30 daily — and the
 restore path is rehearsed end to end, including a download-from-remote-only
 restore, because a backup nobody has restored is a hypothesis.
 
+## A note on names
+
+This was called **Playlistnotes** until August 2026. The rename is not cosmetic:
+the old name described a container inside one streaming provider, which is
+precisely the dependency v2 was built to remove, and it mis-described the data
+model — notes attach to *recordings*, with playlist context as an optional
+foreign key.
+
+Every reference to v1 in this repository deliberately keeps the old name. v1
+really was called Playlistnotes and still runs under it; rewriting those would
+make the documentation lie about its own history.
+
 ## Status
 
-Roughly three quarters of the way to a public release. **240+ tests**: unit,
+Roughly nine tenths of the way to a public release. **240+ tests**: unit,
 integration against a real PostgreSQL, and Playwright against the deployed host.
 Live, gated, and `noindex` at `v2.playlistnotes.io`.
 

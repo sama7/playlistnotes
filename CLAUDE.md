@@ -81,6 +81,8 @@ Spotify supports playlist Embeds, and its oEmbed endpoint currently returns a pu
 - Do not accept an acting `userId` from the client. Derive it from the verified server session.
 - Do not log secrets, tokens, magic links, authorization codes, note bodies, imported files, or sensitive provider payloads.
 - Default visibility to private.
+- **The invite gate runs before authentication, not after.** An uninvited visitor must never reach a sign-up form. Share links, health, and machine-readable surfaces bypass it: it exists to stop account creation, not to hide content an owner deliberately published.
+- **Never let a shared page's metadata carry its contents.** `noindex` stops search engines and does nothing about the chat clients that fetch a pasted URL to build a preview card. Share routes use static metadata; `generateMetadata` on those routes is forbidden and tested for.
 - Prefer a duplicate recording over a false merge.
 - **Honor the catalog policy in `AGENTS.md` §3a.** The catalog is not the product; the notes are. Entry is lax, but user-authored recordings (`origin = user`) stay creator-scoped and out of global resolution. Never create an artist or album row from a name string — only from a provider ID. Never auto-promote one user's free text into a shared entity.
 - Do not block note creation on MusicBrainz or Last.fm.

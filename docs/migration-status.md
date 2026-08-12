@@ -2,12 +2,12 @@
 
 Durable handoff between sessions. Read this before relying on chat context. Update it after every phase and before ending a substantial session.
 
-**Last updated:** August 11, 2026 (overnight session)
+**Last updated:** August 12, 2026
 **Current phase:** Phases 2, 3 and 4 complete. Live over HTTPS at https://v2.playlistnotes.io, gated and `noindex`. Every core capability now has a surface.
 **Checkpoint 1a: PASSED.** The schema review produced two corrections, both now merged — `album_artists` was built, and the `Provider` enum was cut back to authoritative sources.
 **Next milestone:** the Clerk → SuperTokens migration, which is the last piece of scope with a design decision left in it. Everything after it is verification and polish.
 
-**Progress: roughly 94%.** Estimated 2–4 hours remain to a public release.
+**Progress: roughly 90%.** Estimated 4–6 hours remain to a public release. The number moved *down* from 94% because the rebrand added real scope (domain cutover, launch surfaces) and the audit found the invite gate did not exist.
 
 The remaining work is an auth-provider migration, the browser specs that depend
 on it, and an accessibility pass. No unknowns of the kind that produced the
@@ -408,7 +408,7 @@ The whole chain was rehearsed, not just the upload: a probe row written to the
 live database, backed up, encrypted, uploaded, downloaded into a directory
 holding no other copy, decrypted, and restored — probe row present, 17 tables.
 
-**Test totals: 276.** 110 unit, 137 integration, 29 Playwright.
+**Test totals: 300.** 134 unit, 137 integration, 29 Playwright.
 
 ### Two pre-existing defects found by an outside audit, 2026-08-12
 
@@ -488,68 +488,78 @@ twice. It also carries a real caveat — Apple's "Hide My Email" relay address w
 not match a user's Google or email identity, so Clerk cannot auto-link it, which
 is the same split-account failure that ruled out SuperTokens.
 
+## August 12 — invite gate, launch surfaces, and the rebrand's loose ends
+
+### The invite gate now exists
+
+It had been claimed in the docs for weeks and implemented nowhere. It runs
+**before** authentication, so an uninvited visitor never reaches a sign-up form
+rather than being told the site is private after making an account. Share links,
+health, and the machine-readable surfaces bypass it — it stops account creation,
+not content an owner deliberately published.
+
+The cookie holds a keyed digest rather than the code, which is what makes
+rotation meaningful; a test asserts an old cookie stops working once the code
+changes. A misconfiguration (gate on, code empty) fails **open** by design, since
+refusing to boot would take the site down over a doormat — but never silently:
+`check-env.mjs` fails the deploy check on it.
+
+**Live on staging.** The code is `jot-2026-preview`, in `.env` on the droplet.
+
+Found by exercising it rather than reading it: `/invite` bypassed the gate but
+was not a public route, so Clerk's guard redirected it to sign-in, which the gate
+bounced back to `/invite` — a loop that would have locked out every invited user
+on day one.
+
+### Launch surfaces
+
+`metadataBase` from runtime `APP_BASE_URL`, a title template, canonical URL,
+Open Graph and Twitter cards, a generated icon and OG image, `robots.ts`,
+`sitemap.ts`, and a web manifest. Indexing stays off until the domain and
+redirects are verified; `ALLOW_INDEXING` is the single switch.
+
+Two safety properties worth restating because they are easy to undo:
+
+- **Share pages carry static, generic metadata.** A chat client fetching a
+  pasted URL for a preview ignores robots directives, so anything in those
+  fields is shown to every group chat the link reaches. `generateMetadata` is
+  forbidden on those routes and tested for.
+- **The sitemap lists no share URLs**, even public ones.
+
+Caught on deploy: `/robots.txt`, `/sitemap.xml` and `/opengraph-image` were all
+307ing to sign-in, because they have no extension or one outside the static
+exclusion and so reached the auth guard.
+
+### CI e2e — now a reproduction, not a hunch
+
+Verified locally under exact CI conditions: with a placeholder Clerk secret a
+real browser follows the development handshake, returns with a handshake token,
+and the server **500s** verifying it. The suite cannot run in CI without the
+development secret key. Playwright's global setup now fails soft on the missing
+token so the failure is explicable rather than an aborted run.
+
+### Rebrand loose ends
+
+Repo renamed to `sama7/trackjot` by the owner; the local remote follows it. The
+`trackjot.com` nginx vhost is installed and verified serving on the Host header,
+with `www` 308ing to the apex. TLS waits on DNS.
+
+**DNS is not yet pointed at the droplet** — GoDaddy's authoritative nameservers
+still return the parking addresses. Mail is fully intact and must stay that way:
+Microsoft 365 MX, both DKIM selectors, SPF, `autodiscover`, and the
+`onmicrosoft` verification TXT.
+
 ## What is left before a public release
 
 | # | Work | Est. | Blocked? |
 | --- | --- | --- | --- |
-| 1 | **Upgrade to Clerk Pro and configure sessions** — ~90-day inactivity timeout, absolute maximum disabled or a year. At the invite, not before. Enable passkeys once the production domain is settled. | 30 min | needs the owner's card |
-| 2 | **Screen-reader pass over the signed-in surfaces** — axe reports zero violations on every page including populated ones, but that is a floor. VoiceOver through capture, inline editing, and the share panel is still manual work. | 1 h | no |
-| 3 | **Move the e2e suite into CI** — deliberately not done tonight. A real browser follows Clerk's development handshake out to accounts.dev and CI holds only a placeholder secret; adding a step I could not verify locally is the mistake the docker packaging step already taught. Needs `CLERK_SECRET_KEY` as a repository secret, then verification on a real run. | 1 h | needs a repo secret |
-| 3 | **Responsive and accessibility pass** — keyboard traversal of the tracklist and its inline editors, focus management, contrast, and a screen-reader pass over the share panel. | 1–2 h | no |
-| 4 | **Invite ~10 testers.** | — | no |
+| 1 | **TLS + domain cutover** — certbot for `trackjot.com` and `www`, switch `APP_BASE_URL`, add 301s from `v2.playlistnotes.io` preserving paths. | 30 min | **needs the apex A record** |
+| 2 | **Sign in with Apple** — configure the Services ID against the final domain. Note Apple's Hide-My-Email relay will not match a Google or email identity, so Clerk cannot auto-link it. | 45 min | after (1) |
+| 3 | **Move e2e into CI** — needs `CLERK_SECRET_KEY` (development) as a repository secret. Proven necessary, not assumed. | 45 min | **needs a repo secret** |
+| 4 | **Screen-reader pass** over the signed-in surfaces. Axe reports zero violations everywhere including populated pages, but that is a floor. | 1 h | no |
+| 5 | **Clerk Pro** — ~90-day inactivity timeout, absolute maximum disabled, passkeys once the domain is canonical. | 30 min | **at invite time** |
+| 6 | **Drive backup account** — move to a TrackJot-owned Google account. | 30 min | **at invite time** |
+| 7 | **Invite ~10 testers.** | — | after the above |
 
-**Deliberately not in scope for release:** legacy import of the 33 v1 notes,
-Sentry/PostHog (credentials-gated and only useful with traffic), artist and album
-pages, Last.fm, and cutover of the apex domain. All recorded in `AGENTS.md` §16.
-
-### Auth decision — SETTLED 2026-08-11: stay on Clerk, Pro at the invite
-
-The question was investigated properly (Sol's report, independently re-verified
-against primary sources), and **the assumption behind it was backwards.**
-
-The premise was that SuperTokens would be cheaper and more independent. It is
-neither, for what TrackJot actually offers:
-
-- SuperTokens makes **account linking a paid feature with a $100/month
-  minimum** — verified twice, on the pricing page and in the enterprise
-  feature-flag list in `EEFeatureFlag.java`, where `ACCOUNT_LINKING` and `MFA`
-  appear and `WEBAUTHN` does not.
-- **Clerk Pro is $25/month and includes it.** SuperTokens is 4× the price for
-  the feature set we want.
-- TrackJot offers email OTP **and** Google. Without linking, one person
-  using both becomes two identities, and with `users.auth_subject` unique, two
-  accounts and a split journal. The DIY workaround — linking on matching email —
-  is already forbidden by §9, and was right to be.
-- Self-hosting was measured, not guessed: **1.1 GiB available** on a box shared
-  with MKDb, against a Docker daemon plus JVM core at 350–500 MB. That is the
-  one risk the contract says never to take.
-
-Two things Sol got wrong, both minor and both in our favour: the recommended
-mitigation for SuperTokens' stateless access tokens cites
-`access_token_blacklisting`, which `config.yaml` marks deprecated ("Only used in
-CDI<=2.18"); and the migration blast radius is smaller than described, because
-this codebase already isolates the provider — eight files import Clerk, five
-trivially, and **21 of 24 auth-derived call sites go through `requireUser()`**,
-which never sees a provider.
-
-**Hobby now, Pro at the invite.** Hobby's fixed seven-day session is not merely
-annoying: it would manufacture exactly the lapses `AuthLapse` was built to
-measure, corrupting the retention signal the whole validation window depends on.
-
-**No `auth_identities` table.** Recommended, then withdrawn on challenge, and the
-challenge was right. Clerk links a Google sign-in to an existing account on
-verified-email match, so one person arrives with the same subject however they
-signed in — the multiplicity a join table would model does not exist here. It
-would be modelling a provider we chose not to use. It becomes necessary only if
-the provider stops linking upstream, or if a migration wants to run two providers
-at once; adding it then is a backfill from a clean unique column.
-
-**Consequence: the signed-in Playwright specs are unblocked.** They were deferred
-only because a Clerk auth fixture looked throwaway. It is not throwaway any more.
-
-### Everything else the user was blocked on is now closed
-
-- Backup passphrase copied to the password manager — done.
-- rclone Drive remote authorised, uploads verified, round-trip restore rehearsed.
-- Apple Developer account was already set up; the truncated key was the actual
-  fault, and it is fixed.
+**Not in scope for release:** legacy import of the 33 v1 notes, Sentry/PostHog,
+artist and album pages, Last.fm, and cutover of the `playlistnotes.io` apex.
