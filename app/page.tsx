@@ -26,11 +26,12 @@ export default async function Home() {
 
   return (
     <main>
-      <p className="eyebrow">TrackJot</p>
-      <h1>A place to keep what music means to you.</h1>
+      <p className="eyebrow">TrackJot · a private music journal</p>
+      <h1>Keep what music means to you.</h1>
       <p className="lede">
-        Paste a track link and write what you actually thought. Your notes stay
-        private until you decide otherwise.
+        Streaming services know what a track is. They can&rsquo;t know who played it for
+        you, where you were, or what you noticed the fourth time through. Paste a
+        track and jot that down before it goes.
       </p>
 
       <div className="row" style={{ margin: "1.5rem 0 2.5rem" }}>
@@ -46,34 +47,59 @@ export default async function Home() {
 
       <section className="pitch">
         <div>
-          <h2>No Spotify account needed</h2>
+          <h2>One sentence is enough</h2>
           <p className="note">
-            Sign in with an email code or Google. TrackJot owns your account,
-            so your notes do not belong to a streaming service and do not vanish
-            when you leave one.
+            Jot describes the effort, not the value. A passing observation is worth
+            keeping, and getting it down should take seconds — you can always come
+            back and say more.
           </p>
         </div>
         <div>
-          <h2>Paste a link, get the track</h2>
+          <h2>Paste from anywhere</h2>
           <p className="note">
-            Spotify and Apple Music track, album and public playlist links resolve
-            to real recordings with real artists. If a link cannot be read, you can
-            still type the track in yourself — a note is never blocked on metadata.
+            Spotify and Apple Music tracks, albums and public playlists all resolve
+            to real recordings with real artists. No streaming login, ever. If a
+            link can&rsquo;t be read, type the track in yourself — a note is never
+            blocked on metadata.
           </p>
         </div>
         <div>
-          <h2>Private by default</h2>
+          <h2>Where it sat matters</h2>
           <p className="note">
-            Every note starts private. Sharing is a deliberate act, one item at a
-            time, and publishing a collection never publishes the notes inside it.
+            &ldquo;This song&rdquo; and &ldquo;this song, third into that playlist&rdquo;
+            aren&rsquo;t the same thought. Notes can hold either.
+          </p>
+        </div>
+        <div>
+          <h2>Private until you say otherwise</h2>
+          <p className="note">
+            Every note starts private. Sharing is deliberate and one item at a time,
+            and publishing a collection never publishes the notes inside it.
+          </p>
+        </div>
+        <div>
+          <h2>Yours past the provider</h2>
+          <p className="note">
+            TrackJot owns your account and its own identifiers for the music. Your
+            journal doesn&rsquo;t belong to a streaming service and doesn&rsquo;t
+            vanish when you leave one.
+          </p>
+        </div>
+        <div>
+          <h2>Findable later</h2>
+          <p className="note">
+            Search covers what you wrote and the track it was about, because people
+            look for &ldquo;that Drake note&rdquo; more often than they remember
+            their own wording.
           </p>
         </div>
       </section>
 
       <footer className="landing-foot">
         <p className="note">
-          <Link href="/sign-in">Sign in</Link> · TrackJot is a personal
-          project by Samah.
+          <Link href="/sign-in">Sign in</Link> · TrackJot doesn&rsquo;t track you. It
+          helps you keep track of what you chose to remember. A personal project by
+          Samah.
         </p>
       </footer>
     </main>
