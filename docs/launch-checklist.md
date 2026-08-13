@@ -92,6 +92,22 @@ Development uses Clerk's shared Google app. Production requires your own.
 5. Paste the Client ID and Client Secret into Clerk → **SSO connections →
    Google → Use custom credentials.**
 
+**User support email:** whatever the dropdown offers — it is a dropdown, not a
+text field, and Google only accepts the signed-in Google account or a Google
+Group you manage. A Microsoft 365 mailbox at `support@trackjot.com` will not
+appear, because that address is not a Google account. Use the gmail and move on:
+it is editable later from the Branding page, and the only catch is that changing
+it *after* app verification can trigger re-verification — which is irrelevant
+until 100+ users or sensitive scopes.
+
+If a branded address is wanted before inviting people, the cheap path is a
+**Google Group** at `support@trackjot.com`, not a mailbox. Groups are selectable
+here, cost nothing, and forward anywhere.
+
+**Developer contact information** (step 3) is a different field: free text,
+internal, and where Google sends project notices. Put a real address there.
+
+
 ### 1d. Move the keys into the right three places
 
 This is where a rename or a key swap usually breaks, because the publishable key
