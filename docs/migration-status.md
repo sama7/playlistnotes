@@ -484,9 +484,14 @@ and the old backup directory deleted. MKDb verified healthy at every step.
 **Sign in with Apple** is available (the Developer account exists, and Clerk
 Hobby allows three social connections). Deliberately not enabled yet: it binds to
 a verified domain, so doing it before `trackjot.com` is canonical means doing it
-twice. It also carries a real caveat — Apple's "Hide My Email" relay address will
-not match a user's Google or email identity, so Clerk cannot auto-link it, which
-is the same split-account failure that ruled out SuperTokens.
+twice. One caveat, stated more carefully than it was at first: Apple's "Hide My Email"
+relay address cannot match a Google or email identity, so Clerk will not link it
+and the user gets a second account. That was originally written up as the same
+failure that ruled out SuperTokens, which overstated it — SuperTokens split
+*every* multi-method user silently and with no user action, whereas this splits
+only users who deliberately chose to hide their address, with the cause legible
+in the choice they just made. It is a support question to watch for during the
+tester round, not a design flaw.
 
 ## August 12 — invite gate, launch surfaces, and the rebrand's loose ends
 

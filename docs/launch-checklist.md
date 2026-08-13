@@ -152,9 +152,17 @@ Clerk Dashboard → **SSO connections → Add connection → Apple.** Enable it,
 
 1. **Certificates, IDs & Profiles → Identifiers → App IDs → +**
    Register an App ID with description `TrackJot` and **Bundle ID
-   `com.trackjot.app`** (explicit — Apple has no web-only path; the Services ID
-   must be configured against an App ID). Enable **Sign In with Apple**, and
-   when prompted choose **"Enable as a primary App ID"**. The App ID Prefix is
+   `com.trackjot.app`**, explicit.
+
+   > Sign in with Apple works perfectly well for a pure web app. What Apple
+   > lacks is a web-only *configuration* path: the Services ID is the real web
+   > client, but it cannot stand alone and must be attached to a primary App ID.
+   > The App ID is a registration artifact here, not a commitment to ship an
+   > iOS app. Enable **Sign In with Apple**, and
+   when prompted choose **"Enable as a primary App ID"** — on a first App ID it
+   is preselected and the alternative is greyed out, so there is nothing to do
+   but Save. Leave **Server-to-Server Notification Endpoint** blank; it is
+   optional and Clerk does not consume it. The App ID Prefix is
    your **Team ID** — `HHDCP3JTWP`.
 
    > **Take the primary option even though this is web-only.** Apple issues a
@@ -181,15 +189,24 @@ Clerk Dashboard → **SSO connections → Add connection → Apple.** Enable it,
 Paste the Team ID, Services ID, Key ID, and the whole `.p8` contents including
 the `-----BEGIN PRIVATE KEY-----` and `-----END PRIVATE KEY-----` lines.
 
-### 2d. Know this limitation before you enable it
+### 2d. Hide My Email — a support question, not a blocker
 
-If a user picks **Hide My Email**, Apple sends a
-`…@privaterelay.appleid.com` address. That will not match their Google or
-email-code identity, so **Clerk cannot automatically link them** — the same
-person ends up with two TrackJot accounts and a split journal.
+If someone picks **Hide My Email**, Apple sends a `…@privaterelay.appleid.com`
+address, which cannot match their Google or email-code identity, so Clerk will
+not link it. They get a second account.
 
-This is the exact failure mode that ruled out SuperTokens. It is not a reason to
-skip Apple, but it is a reason to watch for it during the tester round.
+**This was previously written up as "the failure mode that ruled out
+SuperTokens", which overstated it.** The SuperTokens problem split *every*
+multi-method user, silently, with no user action and no visible cause. This
+splits only users who deliberately chose to hide their address, and the cause is
+legible in the choice they just made — hiding your email from an app is a poor
+basis for expecting that app to recognise you.
+
+The residual is someone who signed up with Google, later taps Sign in with
+Apple, picks Hide out of habit, and finds an empty journal. If that shows up in
+the tester round, the cheap fix is a line on a brand-new account whose email ends
+in `privaterelay.appleid.com`: *"New here? If you've used TrackJot before, sign
+in the way you did last time."* Roughly fifteen minutes. Not worth pre-building.
 
 ---
 
