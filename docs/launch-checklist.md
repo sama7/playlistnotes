@@ -313,14 +313,75 @@ error.
 
 ---
 
-## 4. At invite time only
+## 4. Launch day
 
-- **Clerk Pro**, $25/mo. Set inactivity timeout ≈ 90 days and **disable** the
-  absolute maximum. On Hobby the fixed 7-day session would manufacture exactly
-  the lapses `AuthLapse` exists to measure, corrupting the retention signal.
-- **Passkeys**, once `trackjot.com` is settled as canonical — they bind to the
-  relying-party domain.
-- **Drive backup account** — move to a TrackJot-owned Google account. Walk
-  through `rclone config` as before; only the account changes.
-- **Flip `ALLOW_INDEXING`** — and not before. Indexing on while the invite gate
-  is up would put a private preview in search results.
+**One sequencing change if there is no beta phase:** Clerk Pro moves *before*
+opening rather than after. On Hobby every session dies at seven days regardless
+of use, which means real users get logged out for a billing reason and
+`scripts/retention.mjs` records the lapse — corrupting the one number the whole
+exercise exists to produce. That was tolerable when "invite day" was a discrete
+event with a handful of known people. It is not tolerable as the opening state.
+
+### Before anyone else arrives
+
+1. **Use it yourself, properly.** Paste a track you actually care about and write
+   something you would want to keep. Import a playlist. Search for it a day
+   later. Share a note, then revoke it. Tests prove the parts work; this is the
+   only thing that tells you whether it is pleasant.
+2. **The screen-reader pass** (step 3).
+
+### Clerk Pro — $25/mo
+
+Dashboard → the instance → **Plan**. Then **Sessions**:
+
+- **Inactivity timeout: 90 days.**
+- **Maximum lifetime: disabled**, or a year if it insists on a value.
+- Leave device/session revocation on.
+
+Verify by checking that a session survives longer than a week — or simply watch
+the forced-sign-out count in the retention report stay at zero.
+
+### Passkeys
+
+Clerk → **User & Authentication → Passkeys** → enable. Only now: passkeys bind to
+the relying-party domain, and `trackjot.com` is finally settled. Users enroll one
+after signing in by another method; Clerk allows up to ten per account.
+
+### The Drive backup account
+
+Currently `playlistnotesapp@gmail.com` — a name from a product that no longer
+exists. Nothing is broken, and the archives are ciphertext either way, so this is
+tidiness rather than security.
+
+```bash
+# On a machine with a browser, signed into the TrackJot Google account:
+rclone config          # new remote "tjdrive", type drive, scope 3 (drive.file)
+rclone config show tjdrive | ssh root@<droplet> 'cat >> /root/.config/rclone/rclone.conf'
+```
+
+Then on the droplet, point `PN_RCLONE_DEST` in `/etc/cron.d/trackjot-backup` at
+`tjdrive:trackjot-backups`, run `/usr/local/bin/pn-backup.sh` once by hand, and
+confirm the archive lands. **Leave the old remote configured until the new one
+has uploaded successfully** — an untested backup destination is not a backup
+destination.
+
+### Opening it up
+
+- **`ALLOW_INDEXING=true`** in the droplet's `.env`, then rebuild and redeploy.
+  This is the switch that turns `robots.txt` from *disallow everything* into a
+  real policy, and it must not be flipped while the invite gate is still up —
+  a private preview in search results is the worst of both.
+- **The invite gate**: set `REQUIRE_INVITE_CODE=false`. Keep the code and the
+  page in place. It stops being a phase and becomes an emergency brake — one
+  environment variable and a restart closes the door again if something goes
+  wrong.
+- Submit `https://trackjot.com/sitemap.xml` to Search Console.
+
+### Then watch the number
+
+```bash
+ssh root@<droplet> 'cd /srv/trackjot/current && /opt/node24/bin/node scripts/retention.mjs'
+```
+
+Run it weekly. The line that matters is **came back and wrote again**. Everything
+else in the report exists to explain that line when it disappoints.
