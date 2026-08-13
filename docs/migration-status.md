@@ -7,7 +7,7 @@ Durable handoff between sessions. Read this before relying on chat context. Upda
 **Checkpoint 1a: PASSED.** The schema review produced two corrections, both now merged — `album_artists` was built, and the `Provider` enum was cut back to authoritative sources.
 **Next milestone:** the Clerk → SuperTokens migration, which is the last piece of scope with a design decision left in it. Everything after it is verification and polish.
 
-**Progress: roughly 94%.** Estimated 2–4 hours remain to a public release, and none of it is on the critical path for a tester actually using the product.
+**Progress: roughly 96%.** Estimated 2–4 hours remain to a public release, and none of it is on the critical path for a tester actually using the product.
 
 The remaining work is an auth-provider migration, the browser specs that depend
 on it, and an accessibility pass. No unknowns of the kind that produced the
@@ -586,11 +586,49 @@ dry-run verified.
 Mail on `trackjot.com` is fully intact and was never touched: Microsoft 365 MX,
 both DKIM selectors, SPF, `autodiscover`, and the `onmicrosoft` verification TXT.
 
+## Clerk production instance — live, 2026-08-13
+
+`trackjot.com` now runs on a **production** Clerk instance on its own domain.
+Verified in a real browser: authentication requests go to `clerk.trackjot.com`
+rather than `accounts.dev`, and the development-mode badge is gone.
+
+All five Clerk CNAMEs resolve; the Microsoft 365 mail records were untouched
+throughout. Google sign-in uses TrackJot's own OAuth credentials, since a
+production instance cannot use Clerk's shared development app.
+
+**The secret key never entered a transcript.** It was written to a local file
+with `read -rs` (no echo, no shell history), piped straight into a 0600 file on
+the droplet over ssh, substituted into `.env` by a script, and both copies
+deleted. The publishable key was handled openly because it is public by design —
+it ships inside the JavaScript bundle to every visitor.
+
+### One real defect this caught in CI, before it caused a red build
+
+Putting `pk_live_` into the repository variable made the build job's artifact
+production-keyed. The e2e job downloaded *that* artifact and ran it with the
+**development** secret — and Clerk validates that publishable and secret keys
+belong to the same instance, so every signed-in spec would have failed at
+sign-in, looking like broken auth code rather than a mismatched pair.
+
+The e2e job now builds its own artifact from `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY_DEV`
+and refuses to start if that variable is missing or holds a live key. The trade
+is explicit: e2e no longer exercises the byte-identical shipped package, but it
+exercises the same source, and the smoke check in the build job still runs
+against the real artifact.
+
+### A mismatch window that is worth knowing about
+
+Between deploying the live-keyed bundle and updating `.env`, the server logged
+*"instance keys do not match"* — correctly, because for those seconds the
+compiled publishable key and the runtime secret genuinely belonged to different
+instances. Zero occurrences after the secret landed. A key swap has an
+unavoidable ordering gap; on a host with real traffic it would be worth
+sequencing deliberately rather than discovering.
+
 ## What is left before a public release
 
 | # | Work | Est. | Blocked? |
 | --- | --- | --- | --- |
-| 1 | **Clerk production instance for `trackjot.com`** — the current keys belong to a development instance whose allowed origin is still the old host. Sign-in works today because Clerk development instances are permissive; a production instance needs its own DNS records, keys, and Google OAuth redirect URIs, and the publishable key is inlined at build time so CI's repository variable changes with it. | 1 h | **needs dashboard access** |
 | 2 | **Sign in with Apple** — Services ID and key in the Apple portal, then Clerk. Now unblocked by the canonical domain. Apple's Hide-My-Email relay will not match a Google or email identity, so Clerk cannot auto-link it. | 45 min | **needs dashboard access** |
 | 4 | **Screen-reader pass** over the signed-in surfaces. Axe reports zero violations everywhere including populated pages, but that is a floor. | 1 h | no |
 | 5 | **Clerk Pro** — ~90-day inactivity timeout, absolute maximum disabled, passkeys once the domain is canonical. | 30 min | **at invite time** |

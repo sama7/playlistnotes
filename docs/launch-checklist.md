@@ -14,15 +14,15 @@ and doing Apple first means doing it twice.
 | --- | --- |
 | Live at | `https://trackjot.com` (TLS, HSTS, `noindex`) |
 | Invite code | `jot-2026-preview` |
-| Clerk | **development** instance, allowed origin still the old host |
-| Google sign-in | Clerk's **shared** dev credentials — not valid in production |
+| Clerk | **production** instance on `clerk.trackjot.com` |
+| Google sign-in | TrackJot's own OAuth credentials |
 | Apple sign-in | not configured |
 | Database | droplet-local `trackjot`, 0 users, 0 notes |
 | Backups | hourly, encrypted, mirrored to Drive, restore rehearsed |
 
 ---
 
-## 1. Clerk production instance (~1 hour, plus DNS propagation)
+## 1. Clerk production instance — ✅ DONE 2026-08-13
 
 Why this is first: everything else — Apple, passkeys, the production Google
 credentials — binds to the Clerk **Frontend API URL**, which does not exist
