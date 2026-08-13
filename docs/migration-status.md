@@ -616,6 +616,24 @@ is explicit: e2e no longer exercises the byte-identical shipped package, but it
 exercises the same source, and the smoke check in the build job still runs
 against the real artifact.
 
+### Account linking, validated in production rather than argued
+
+The first real sign-up exercised the exact scenario that decided Clerk over
+SuperTokens: signed up with an email code, signed out, signed back in with
+Google on the same address. Clerk linked them, and **the database holds exactly
+one `users` row**.
+
+That is the whole case, demonstrated. Under SuperTokens without the $100/month
+account-linking feature those would have been two identities, and with
+`users.auth_subject` unique, two TrackJot accounts and a journal split in half.
+
+It also confirms the lazy `ON CONFLICT (auth_subject)` upsert behaves: one
+verified subject, one local row, created on first authenticated request.
+
+**The production database is no longer empty.** Reasoning that treated a
+recreate-from-scratch as free — which is what made the rename and the database
+rename cheap — no longer applies.
+
 ### A mismatch window that is worth knowing about
 
 Between deploying the live-keyed bundle and updating `.env`, the server logged

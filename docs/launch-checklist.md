@@ -151,8 +151,19 @@ Clerk Dashboard → **SSO connections → Add connection → Apple.** Enable it,
 ### 2b. Apple Developer portal
 
 1. **Certificates, IDs & Profiles → Identifiers → App IDs → +**
-   Register an App ID, enable **Sign In with Apple**. The App ID Prefix is your
-   **Team ID**.
+   Register an App ID with description `TrackJot` and **Bundle ID
+   `com.trackjot.app`** (explicit — Apple has no web-only path; the Services ID
+   must be configured against an App ID). Enable **Sign In with Apple**, and
+   when prompted choose **"Enable as a primary App ID"**. The App ID Prefix is
+   your **Team ID** — `HHDCP3JTWP`.
+
+   > **Take the primary option even though this is web-only.** Apple issues a
+   > *different user identifier per app group*. If the planned iOS share
+   > extension later ships under a separate, ungrouped App ID, the same person
+   > signing in on web and in the app arrives as two different Apple subjects —
+   > two Clerk identities, two TrackJot accounts, a split journal. Grouping the
+   > future app against this primary keeps them one person. Cheap now,
+   > expensive to unpick later.
 2. **Identifiers → Services IDs → +**
    Register one — its identifier is your **Services ID**. Configure it:
    - Select the App ID from step 1.
