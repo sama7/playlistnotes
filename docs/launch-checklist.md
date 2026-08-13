@@ -173,16 +173,39 @@ Clerk Dashboard → **SSO connections → Add connection → Apple.** Enable it,
    > future app against this primary keeps them one person. Cheap now,
    > expensive to unpick later.
 2. **Identifiers → Services IDs → +**
-   Register one — its identifier is your **Services ID**. Configure it:
-   - Select the App ID from step 1.
-   - **Domains and Subdomains:** Clerk's Frontend API URL *without* the scheme,
-     e.g. `clerk.trackjot.com`.
-   - **Return URLs:** the Return URL Clerk gave you.
+   Register one — its identifier is your **Services ID**. Then open it, tick
+   **Sign In with Apple**, and press the **`Configure`** button beside it.
+
+   > **That Configure button is the step everyone misses.** Ticking the checkbox
+   > reveals nothing; the domain and return-URL fields only exist behind it.
+
+   | Field | Value |
+   | --- | --- |
+   | Primary App ID | `com.trackjot.app` |
+   | Domains and Subdomains | `clerk.trackjot.com` |
+   | Return URLs | the exact value Clerk showed |
+
+   It is `clerk.trackjot.com`, **not** `trackjot.com`. Apple needs the host that
+   actually handles the OAuth callback, which belongs to Clerk rather than to the
+   application.
+
+   If Apple offers a **Verify** button, it looks for
+   `https://clerk.trackjot.com/.well-known/apple-developer-domain-association.txt`.
+   That is Clerk's domain to serve, not ours — do not host the file. It 404s
+   before Apple is enabled in Clerk, which is expected; if verification still
+   fails afterwards, that is a Clerk configuration problem rather than a DNS one.
 3. **Keys → +** — register a key, enable **Sign In with Apple**, configure it
    against the App ID. Save the **Key ID** and download the `.p8`.
    **It can only be downloaded once.**
 4. **Services → Sign in with Apple for Email Communication** → add Clerk's
-   **Email Source** value.
+   **Email Source** value. This is a *different screen* from step 2 and covers
+   the opposite direction: mail TrackJot sends **to** relay addresses, so Apple
+   accepts it. Put the value in **Domains and Subdomains** if it looks like a
+   domain (`clkmail.trackjot.com`) or **Email Addresses** if it looks like an
+   address.
+
+   Easy to end up here while hunting for step 2's fields — both screens talk
+   about domains, and neither says which direction it means.
 
 ### 2c. Back in Clerk
 
