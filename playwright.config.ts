@@ -1,4 +1,3 @@
-import { existsSync } from "node:fs";
 import { defineConfig, devices } from "@playwright/test";
 import { STORAGE_STATE } from "./tests/e2e/support/global-setup";
 
@@ -57,9 +56,18 @@ export default defineConfig({
       name: "chromium",
       use: {
         ...devices["Desktop Chrome"],
-        // Written by global setup after passing the invite gate. Absent when the
-        // gate is off or no code was supplied, which is why it is optional.
-        storageState: existsSync(STORAGE_STATE) ? STORAGE_STATE : undefined,
+        /**
+         * Always this path — global setup guarantees the file exists, even when
+         * it holds no cookies.
+         *
+         * It used to be `existsSync(...) ? ... : undefined`, which is a trap:
+         * this config is evaluated BEFORE global setup runs, so the check asks
+         * whether a *previous* run left a file. Delete that file and the gate
+         * cookie silently stops being applied; leave it and a stale session
+         * leaks between runs. Both failure modes surface as specs failing on
+         * their own assertions, which looks like a broken application.
+         */
+        storageState: STORAGE_STATE,
       },
     },
   ],

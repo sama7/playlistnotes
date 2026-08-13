@@ -37,8 +37,16 @@ ssh root@<droplet> 'pm2 restart trackjot --update-env'
 ssh root@<droplet> 'cd /srv/trackjot/current && /opt/node24/bin/node scripts/smoke.js https://trackjot.com'
 ```
 
-`check-env.mjs` validates the **shape** of every configured secret and never
-prints a value. It exists because of a failure neither the build nor the smoke
+`check-env.mjs` validates the **shape** of every configured secret, compares the
+publishable key **compiled into the bundle** against the one in `.env`, and never
+prints a value.
+
+That comparison exists because of an outage on 2026-08-13. A rebuild sourced the
+development `.env` while the droplet held the live secret, so the bundle and the
+runtime belonged to different Clerk instances. The server started, `/api/health`
+passed, the smoke check passed, and every browser request died in a Clerk
+handshake loop with a 500. Nothing that looks at the process or the database can
+see that; only comparing the two keys can. It exists because of a failure neither the build nor the smoke
 test could see: the first deployment copied secrets with `grep`, which is
 line-based, so the multi-line Apple private key arrived truncated — a BEGIN
 marker, no END, 94 of 261 bytes. The app started, served every page, passed

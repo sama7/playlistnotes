@@ -20,7 +20,8 @@
  * Usage: node scripts/check-env.mjs [path-to-env]   (default ./.env)
  */
 
-import { readFileSync } from "node:fs";
+import { readFileSync, existsSync } from "node:fs";
+import { execSync } from "node:child_process";
 
 const path = process.argv[2] ?? ".env";
 
@@ -141,6 +142,51 @@ if (present.length > 0 && present.length < apple.length) {
       .join(", ")}. Apple features will fail at call time, not at startup.`,
   );
   failed++;
+}
+
+/**
+ * The publishable key is compiled into the bundle; the secret key is read at
+ * runtime. Nothing else in this file can see that they disagree, and disagreeing
+ * is catastrophic in a way that looks like nothing: the server starts, health
+ * passes, static pages render, and every browser request dies in a Clerk
+ * handshake loop with a 500.
+ *
+ * That is not hypothetical. It shipped on 2026-08-13 because a rebuild sourced
+ * the development `.env` while the droplet held the live secret — the exact trap
+ * documented three days earlier in the launch checklist.
+ *
+ * So compare the key ACTUALLY in the build against the one in the environment.
+ */
+const bundle = ".next/static";
+if (existsSync(bundle) && env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY) {
+  try {
+    const found = execSync(
+      `grep -rhoE "pk_(live|test)_[A-Za-z0-9]+" ${bundle} | sort -u`,
+      { encoding: "utf8" },
+    )
+      .split("\n")
+      .filter(Boolean);
+
+    if (found.length === 0) {
+      console.log("\n  skip     bundle key                     none found (not a Clerk build?)");
+    } else if (found.length > 1) {
+      console.log(`\n  MISMATCH bundle contains ${found.length} different publishable keys.`);
+      failed++;
+    } else if (found[0] !== env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY) {
+      const kind = (k) => (k.startsWith("pk_live_") ? "live" : "development");
+      console.log(
+        `\n  MISMATCH the bundle was built with the ${kind(found[0])} publishable key, ` +
+          `but .env holds the ${kind(env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY)} one.\n` +
+          "           Clerk requires a matched pair. Every browser request will fail\n" +
+          "           in a handshake loop while health checks keep passing. REBUILD.",
+      );
+      failed++;
+    } else {
+      console.log(`\n  ok       bundle key                     matches .env (${found[0].slice(0, 8)}…)`);
+    }
+  } catch {
+    // grep exits non-zero when nothing matches; not a failure on its own.
+  }
 }
 
 console.log(

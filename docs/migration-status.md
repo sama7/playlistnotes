@@ -713,6 +713,47 @@ rehearsal recovered the real user, an old `pn-` archive still restored, and
 nothing `pn`-named remains in the scripts, cron, rclone config, dotfiles, or the
 deployed bundle.
 
+## An outage I caused, 2026-08-13
+
+`/invite` returned 500 to every browser for roughly twenty minutes. Found while
+investigating what looked like a test regression — the browser suite dropped from
+18 passing to 5.
+
+**Cause: I walked into the trap I had documented three days earlier.** The
+publishable key is compiled into the bundle at build time. Several rebuilds
+during the `pn` rename ran `source .env`, which holds the **development**
+publishable key, while the droplet's `.env` held the **live** secret. Clerk
+requires a matched pair; mismatched, it issues a handshake the client can never
+satisfy and the server 500s.
+
+**Why nothing caught it.** `/api/health` passed — it checks the database.
+The smoke check passed — it makes requests without an HTML `Accept` header, so it
+never triggers the handshake. `pm2` reported online. Every signal that exists was
+green while the product was unusable in a browser. That is the same shape as the
+proxy-loop bug on 2026-08-10: the failure lives in a seam no health check looks
+at.
+
+**The fix, and the guard.** Rebuilt with the live key and redeployed.
+`check-env.mjs` now greps the publishable key actually present in `.next/static`
+and compares it to `.env`, failing with an explicit REBUILD instruction. Verified
+both ways: exit 1 against a deliberately mismatched build, exit 0 against the
+repaired one.
+
+**A second bug, found underneath the first.** The Playwright suite had been
+masking this. `playwright.config.ts` decided whether to apply the saved storage
+state with `existsSync(...)`, evaluated at *config load* — before global setup
+writes the file. So it was really asking whether a previous run had left one:
+delete it and the invite cookie silently stops being applied; keep it and a stale
+session leaks between runs. The saved state had in fact been poisoned with
+development Clerk cookies and a redirect counter from the mismatch window.
+
+Three corrections: the config now points at the path unconditionally and global
+setup guarantees the file exists on every path; `clerkSetup` runs only against a
+local target, because pointing development interception at a production host is
+itself a handshake loop; and a gate that cannot be passed now throws instead of
+warning, since thirteen specs failing on their own assertions reads exactly like
+a broken application.
+
 ## What is left before a public release
 
 | # | Work | Est. | Blocked? |
