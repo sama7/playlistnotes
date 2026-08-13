@@ -237,7 +237,18 @@ jobs:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/trackjot_e2e
       DIRECT_URL: postgresql://postgres:postgres@localhost:5432/trackjot_e2e
       APP_BASE_URL: http://localhost:3001
-      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ vars.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
+      # DEVELOPMENT keys, deliberately, and they must be a matched pair.
+      #
+      # Clerk validates that the publishable and secret keys belong to the same
+      # instance. Once the production variable holds a pk_live, pairing it with
+      # the development secret fails at sign-in — so this job cannot reuse the
+      # artifact the build job produced, and builds its own with dev keys.
+      #
+      # The trade is explicit: e2e no longer exercises the byte-identical
+      # package that ships. It exercises the same source with a different key
+      # baked in, which is what the tests are actually about. The smoke check in
+      # the build job still runs against the real artifact.
+      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ vars.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY_DEV }}
       CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
 
     steps:
@@ -250,8 +261,21 @@ jobs:
 
       - run: npm ci
 
-      - name: Require the Clerk development secret
+      - name: Require a matched pair of development Clerk keys
         run: |
+          if [ -z "${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}" ]; then
+            echo "::error::Repository variable NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY_DEV is not set."
+            echo "The browser suite needs the DEVELOPMENT publishable key (pk_test_…),"
+            echo "because NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY now holds the production one."
+            echo "Add it at: Settings → Secrets and variables → Actions → Variables"
+            exit 1
+          fi
+          case "${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}" in
+            pk_live_*)
+              echo "::error::NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY_DEV holds a PRODUCTION key."
+              exit 1
+              ;;
+          esac
           if [ -z "${CLERK_SECRET_KEY}" ]; then
             echo "::error::Repository secret CLERK_SECRET_KEY is not set."
             echo "Add the DEVELOPMENT secret key (sk_test_…) at:"
@@ -267,19 +291,26 @@ jobs:
               ;;
           esac
 
-      - uses: actions/download-artifact@v4
-        with:
-          name: trackjot-standalone
-          path: artifact
-
       - run: npx playwright install --with-deps chromium
 
       - name: Migrate the disposable database
         run: npx prisma migrate deploy
 
-      - name: Start the packaged artifact
+      - name: Build with the development key
+        run: npm run build
+
+      - name: Package it
         run: |
-          chmod +x artifact/scripts/*.cjs artifact/scripts/*.js 2>/dev/null || true
+          mkdir -p artifact
+          cp -r .next/standalone/. artifact/
+          mkdir -p artifact/.next
+          cp -r .next/static artifact/.next/static
+          if [ -d public ]; then cp -r public artifact/public; fi
+          mkdir -p artifact/scripts
+          cp scripts/start-standalone.cjs scripts/smoke.js scripts/check-env.mjs artifact/scripts/
+
+      - name: Start it
+        run: |
           node artifact/scripts/start-standalone.cjs &
           for _ in $(seq 1 30); do
             curl -sf -o /dev/null http://localhost:3001/api/health && break
