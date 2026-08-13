@@ -11,13 +11,13 @@ import { prisma } from "@/lib/db";
  * written while the user is signed in, which survive Clerk's session expiring.
  * If someone arrives at sign-in carrying those cookies, they are returning.
  *
- * Neither cookie carries personal data. `pn_visitor` is a random identifier
- * with no link to an account; `pn_last_seen` is a day number. We could not
+ * Neither cookie carries personal data. `tj_visitor` is a random identifier
+ * with no link to an account; `tj_last_seen` is a day number. We could not
  * record a user ID here even if we wanted to — the visitor is signed out.
  */
 
-export const VISITOR_COOKIE = "pn_visitor";
-export const LAST_SEEN_COOKIE = "pn_last_seen";
+export const VISITOR_COOKIE = "tj_visitor";
+export const LAST_SEEN_COOKIE = "tj_last_seen";
 
 /** Browsers cap persistent cookies at 400 days; ask for the maximum. */
 export const BREADCRUMB_MAX_AGE_SECONDS = 400 * 24 * 60 * 60;

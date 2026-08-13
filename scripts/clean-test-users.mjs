@@ -4,7 +4,7 @@
  *
  * Every run signs up fresh accounts, so without this they accumulate in the
  * development instance forever. Untidy rather than dangerous — but a dashboard
- * full of `pn_alice_1786…` is exactly the kind of mess that makes a real user
+ * full of `tj_alice_1786…` is exactly the kind of mess that makes a real user
  * hard to spot when something is actually wrong.
  *
  * ## The guards matter more than the deletion

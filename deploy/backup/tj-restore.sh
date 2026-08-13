@@ -3,38 +3,38 @@
 # Restore a TrackJot backup — into a scratch database by default.
 #
 # A backup nobody has restored is a hypothesis, not a backup. This is the other
-# half of pn-backup.sh and it is meant to be *run*, not just to exist: the
+# half of tj-backup.sh and it is meant to be *run*, not just to exist: the
 # rehearsal is what turns "we take backups" into a claim that survives contact
 # with an actual outage.
 #
-# It refuses to write to the live database unless PN_ALLOW_LIVE=yes is set
+# It refuses to write to the live database unless TJ_ALLOW_LIVE=yes is set
 # explicitly. Restoring over production is a decision someone should have to
 # make on purpose, at 3am, while tired.
 #
 # Usage:
-#   pn-restore.sh /var/backups/trackjot/daily/pn-20260811.sql.gz.enc
-#   pn-restore.sh <archive> trackjot_restore_check
+#   tj-restore.sh /var/backups/trackjot/daily/tj-<date>.sql.gz.enc
+#   tj-restore.sh <archive> trackjot_restore_check
 
 set -euo pipefail
 
-ARCHIVE="${1:?usage: pn-restore.sh <encrypted-archive> [target-database]}"
+ARCHIVE="${1:?usage: tj-restore.sh <encrypted-archive> [target-database]}"
 TARGET="${2:-trackjot_restore_check}"
-PASS_FILE="${PN_PASS_FILE:-/root/.pn-db-backup-pass}"
+PASS_FILE="${TJ_PASS_FILE:-/root/.tj-db-backup-pass}"
 
-if [ "$TARGET" = "trackjot" ] && [ "${PN_ALLOW_LIVE:-no}" != "yes" ]; then
-  echo "Refusing to restore over the live database. Re-run with PN_ALLOW_LIVE=yes if that is genuinely what you want." >&2
+if [ "$TARGET" = "trackjot" ] && [ "${TJ_ALLOW_LIVE:-no}" != "yes" ]; then
+  echo "Refusing to restore over the live database. Re-run with TJ_ALLOW_LIVE=yes if that is genuinely what you want." >&2
   exit 1
 fi
 
 [ -r "$ARCHIVE" ] || { echo "cannot read $ARCHIVE" >&2; exit 1; }
 [ -r "$PASS_FILE" ] || { echo "cannot read $PASS_FILE" >&2; exit 1; }
 
-PLAIN="$(mktemp /tmp/pn-restore-XXXXXX.sql)"
+PLAIN="$(mktemp /tmp/tj-restore-XXXXXX.sql)"
 
 # Decrypt and decompress as two checked steps rather than one pipe. A wrong
 # passphrase otherwise surfaces as "gzip: stdin: not in gzip format", which
 # sends whoever is restoring at 3am after the wrong problem.
-GZ="$(mktemp /tmp/pn-restore-XXXXXX.sql.gz)"
+GZ="$(mktemp /tmp/tj-restore-XXXXXX.sql.gz)"
 trap 'rm -f "$PLAIN" "$GZ"' EXIT
 
 if ! openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -pass "file:$PASS_FILE" \

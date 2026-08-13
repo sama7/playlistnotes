@@ -679,6 +679,40 @@ The App ID is registered as **primary**, so a future iOS share extension can be
 grouped against it and keep the same Apple subject — without that, the same
 person would arrive as two identities across web and app.
 
+## The `pn` prefix — renamed 2026-08-13
+
+The rebrand searched for "playlistnotes" and never for `pn`, so the abbreviation
+survived everywhere the full name did not. Caught by review, not by a test.
+
+| Renamed | To |
+| --- | --- |
+| Cookies `pn_visitor`, `pn_last_seen` | `tj_visitor`, `tj_last_seen` |
+| `PN_*` backup environment variables | `TJ_*` |
+| `pn-backup.sh`, `pn-restore.sh` | `tj-backup.sh`, `tj-restore.sh` |
+| `/root/.pn-db-backup-pass` | `/root/.tj-db-backup-pass` — **same passphrase**, so the password-manager copy is still correct |
+| `/var/lib/pn-backup`, `/var/log/pn-backup.log` | `/var/lib/tj-backup`, `/var/log/tj-backup.log` |
+| rclone remote `pndrive` | `tjdrive` — a section label only; the OAuth token inside is untouched |
+| New archive prefix `pn-<ts>` | `tj-<ts>` |
+| e2e test email prefix | `tj_…+clerk_test@example.com` |
+
+**Existing `pn-` archives were deliberately not renamed.** They restore fine —
+`tj-restore.sh` takes an explicit path and the pruning uses `ls -t`, so a mixed
+directory is harmless — and they age out within a day or a month anyway.
+Verified by restoring one of each.
+
+**The cookie rename orphans any existing breadcrumb.** With one user that is
+irrelevant; the session-lapse counter simply starts again. It would have been a
+real cost a month from now, which is the argument for having caught it today.
+
+Kept, as history: `.pn-backup-pass`, `.pn-mongo-uri` and `.pn-db-name` in this
+document refer to the v1 disaster-recovery artifacts and describe what was
+actually done in August 2026. Same rule as the old product name.
+
+Verified after the migration: a fresh backup ran and uploaded, a restore
+rehearsal recovered the real user, an old `pn-` archive still restored, and
+nothing `pn`-named remains in the scripts, cron, rclone config, dotfiles, or the
+deployed bundle.
+
 ## What is left before a public release
 
 | # | Work | Est. | Blocked? |

@@ -21,22 +21,22 @@
 #     for pg_dump's own terminator before it is encrypted.
 #   - **Never touch MKDb.** Only the `trackjot` database is read.
 #
-# Install: /usr/local/bin/pn-backup.sh, mode 0755, run hourly from cron.
+# Install: /usr/local/bin/tj-backup.sh, mode 0755, run hourly from cron.
 
 set -euo pipefail
 
-DB_NAME="${PN_DB_NAME:-trackjot}"
-DB_USER="${PN_DB_USER:-trackjot}"
-BACKUP_DIR="${PN_BACKUP_DIR:-/var/backups/trackjot}"
-PASS_FILE="${PN_PASS_FILE:-/root/.pn-db-backup-pass}"
-LOG_FILE="${PN_LOG_FILE:-/var/log/pn-backup.log}"
-STATUS_FILE="${PN_STATUS_FILE:-/var/lib/pn-backup/last-status}"
+DB_NAME="${TJ_DB_NAME:-trackjot}"
+DB_USER="${TJ_DB_USER:-trackjot}"
+BACKUP_DIR="${TJ_BACKUP_DIR:-/var/backups/trackjot}"
+PASS_FILE="${TJ_PASS_FILE:-/root/.tj-db-backup-pass}"
+LOG_FILE="${TJ_LOG_FILE:-/var/log/tj-backup.log}"
+STATUS_FILE="${TJ_STATUS_FILE:-/var/lib/tj-backup/last-status}"
 
-# Set to an rclone remote:path once Drive is configured, e.g. "pndrive:trackjot-backups".
-RCLONE_DEST="${PN_RCLONE_DEST:-}"
+# Set to an rclone remote:path once Drive is configured, e.g. "tjdrive:trackjot-backups".
+RCLONE_DEST="${TJ_RCLONE_DEST:-}"
 
-HOURLY_KEEP="${PN_HOURLY_KEEP:-24}"
-DAILY_KEEP="${PN_DAILY_KEEP:-30}"
+HOURLY_KEEP="${TJ_HOURLY_KEEP:-24}"
+DAILY_KEEP="${TJ_DAILY_KEEP:-30}"
 
 timestamp() { date -u +%Y%m%dT%H%M%SZ; }
 log() { printf '%s  %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*" >>"$LOG_FILE"; }
@@ -53,7 +53,7 @@ fail() {
 [ -r "$PASS_FILE" ] || fail "passphrase file $PASS_FILE is missing or unreadable"
 
 TS="$(timestamp)"
-PLAIN="$(mktemp /tmp/pn-dump-XXXXXX.sql)"
+PLAIN="$(mktemp /tmp/tj-dump-XXXXXX.sql)"
 # The plaintext dump is the one moment note bodies exist unencrypted on disk.
 # Remove it on every exit path, including failure.
 trap 'rm -f "$PLAIN"' EXIT
@@ -69,7 +69,7 @@ tail -n 5 "$PLAIN" | grep -q 'PostgreSQL database dump complete' \
 BYTES="$(wc -c <"$PLAIN")"
 [ "$BYTES" -gt 512 ] || fail "dump is implausibly small (${BYTES} bytes)"
 
-OUT="$BACKUP_DIR/hourly/pn-${TS}.sql.gz.enc"
+OUT="$BACKUP_DIR/hourly/tj-${TS}.sql.gz.enc"
 gzip -c "$PLAIN" \
   | openssl enc -aes-256-cbc -pbkdf2 -iter 200000 -salt -pass "file:$PASS_FILE" \
   >"$OUT" || fail "encryption failed"
@@ -79,7 +79,7 @@ chmod 600 "$OUT"
 # One promoted copy per UTC day, so a slow-burn corruption discovered next week
 # is still recoverable.
 DAY="${TS%%T*}"
-DAILY="$BACKUP_DIR/daily/pn-${DAY}.sql.gz.enc"
+DAILY="$BACKUP_DIR/daily/tj-${DAY}.sql.gz.enc"
 [ -e "$DAILY" ] || cp -p "$OUT" "$DAILY"
 
 # Retention. `ls -t` newest-first, keep the head, delete the tail.
@@ -107,5 +107,5 @@ printf 'OK %s %s uploaded=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$OUT" "$UPLOAD
 # which is real but partial. It does NOT survive losing the droplet, so say so
 # on every run rather than letting the absence look like success.
 if [ -z "$RCLONE_DEST" ]; then
-  log "WARNING: backups are on the same droplet as the database. Configure PN_RCLONE_DEST for off-host copies."
+  log "WARNING: backups are on the same droplet as the database. Configure TJ_RCLONE_DEST for off-host copies."
 fi

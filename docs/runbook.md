@@ -21,7 +21,7 @@ processes, files, databases, and vhosts.
 | Certificate | Let's Encrypt, `trackjot.com` + `www.trackjot.com`, auto-renewing |
 | Database | droplet-local PostgreSQL 16, database and role both `trackjot` |
 | Backups | `/var/backups/trackjot/{hourly,daily}` |
-| Backup log | `/var/log/pn-backup.log`, last result in `/var/lib/pn-backup/last-status` |
+| Backup log | `/var/log/tj-backup.log`, last result in `/var/lib/tj-backup/last-status` |
 
 ## Deploying
 
@@ -71,22 +71,22 @@ gzips it, and encrypts it with AES-256 **before** anything leaves the box. One
 copy per UTC day is promoted to `daily/`. Retention is 24 hourly and 30 daily.
 
 ```bash
-/usr/local/bin/pn-backup.sh          # run one now
-cat /var/lib/pn-backup/last-status   # OK/FAILED, timestamp, destination
-tail -20 /var/log/pn-backup.log
+/usr/local/bin/tj-backup.sh          # run one now
+cat /var/lib/tj-backup/last-status   # OK/FAILED, timestamp, destination
+tail -20 /var/log/tj-backup.log
 ```
 
 ### Restoring
 
 ```bash
 # Rehearsal — restores into a scratch database, never the live one.
-/usr/local/bin/pn-restore.sh /var/backups/trackjot/daily/pn-<date>.sql.gz.enc
+/usr/local/bin/tj-restore.sh /var/backups/trackjot/daily/tj-<date>.sql.gz.enc
 
 # Real recovery, deliberately awkward:
-PN_ALLOW_LIVE=yes /usr/local/bin/pn-restore.sh <archive> trackjot
+TJ_ALLOW_LIVE=yes /usr/local/bin/tj-restore.sh <archive> trackjot
 ```
 
-The script refuses to write to `trackjot` without `PN_ALLOW_LIVE=yes`,
+The script refuses to write to `trackjot` without `TJ_ALLOW_LIVE=yes`,
 because restoring over production is a decision someone should make on purpose
 at 3am while tired.
 
@@ -98,8 +98,8 @@ ciphertext was confirmed to contain no readable SQL.
 ### Off-host copies — configured 2026-08-11
 
 Backups are mirrored to Google Drive on the `trackjotapp@gmail.com`
-account, remote `pndrive`, path `trackjot-backups/{hourly,daily}`.
-`PN_RCLONE_DEST` is set in `/etc/cron.d/trackjot-backup`, so every
+account, remote `tjdrive`, path `trackjot-backups/{hourly,daily}`.
+`TJ_RCLONE_DEST` is set in `/etc/cron.d/trackjot-backup`, so every
 scheduled run uploads. Only ciphertext crosses the wire — Drive never holds a
 readable note body.
 
@@ -118,7 +118,7 @@ straight into the droplet over ssh, so the refresh token was never displayed or
 stored anywhere else:
 
 ```bash
-rclone config show pndrive | ssh root@<droplet> 'cat >> /root/.config/rclone/rclone.conf'
+rclone config show tjdrive | ssh root@<droplet> 'cat >> /root/.config/rclone/rclone.conf'
 ```
 
 **Round trip rehearsed 2026-08-11.** A probe row was written to the live
@@ -128,14 +128,16 @@ database — probe row present, 17 tables. That is the whole chain, not just the
 upload.
 
 ```bash
-rclone about pndrive:                              # quota
-rclone ls pndrive:trackjot-backups            # what is actually stored
-rclone lsf pndrive:trackjot-backups/hourly | sort | tail -1
+rclone about tjdrive:                              # quota
+rclone ls tjdrive:trackjot-backups            # what is actually stored
+rclone lsf tjdrive:trackjot-backups/hourly | sort | tail -1
 ```
 
 ### The passphrase stays on the droplet
 
-`/root/.pn-db-backup-pass`, mode 0600. **It is not to be deleted** — the hourly
+`/root/.tj-db-backup-pass`, mode 0600 — renamed from `.pn-db-backup-pass` on
+2026-08-13; the passphrase itself is unchanged, so the copy in the password
+manager is still correct. **It is not to be deleted** — the hourly
 job reads it on every run, and the script fails closed without it.
 
 A second copy lives in the owner's password manager, which was the part that

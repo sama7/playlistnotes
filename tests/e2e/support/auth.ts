@@ -21,7 +21,7 @@ export const TEST_CODE = "424242";
 
 /** Distinct address per run, so parallel workers never share an account. */
 export function testEmail(label: string): string {
-  return `pn_${label}_${Date.now()}_${Math.floor(Math.random() * 10_000)}+clerk_test@example.com`;
+  return `tj_${label}_${Date.now()}_${Math.floor(Math.random() * 10_000)}+clerk_test@example.com`;
 }
 
 export async function signUp(page: Page, email: string): Promise<void> {

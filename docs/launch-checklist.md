@@ -355,13 +355,14 @@ tidiness rather than security.
 
 ```bash
 # On a machine with a browser, signed into the TrackJot Google account:
-rclone config          # new remote "tjdrive", type drive, scope 3 (drive.file)
-rclone config show tjdrive | ssh root@<droplet> 'cat >> /root/.config/rclone/rclone.conf'
+rclone config          # re-authorise the EXISTING remote "tjdrive" against the TrackJot account
+rclone config show tjdrive | ssh root@<droplet> 'cat > /root/.config/rclone/rclone.conf'
 ```
 
-Then on the droplet, point `PN_RCLONE_DEST` in `/etc/cron.d/trackjot-backup` at
-`tjdrive:trackjot-backups`, run `/usr/local/bin/pn-backup.sh` once by hand, and
-confirm the archive lands. **Leave the old remote configured until the new one
+The remote is already named `tjdrive` and `TJ_RCLONE_DEST` already points at it,
+so only the Google account behind the token changes. Run
+`/usr/local/bin/tj-backup.sh` once by hand afterwards and confirm the archive
+lands in the new account. **Leave the old remote configured until the new one
 has uploaded successfully** — an untested backup destination is not a backup
 destination.
 
