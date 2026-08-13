@@ -200,9 +200,17 @@ Clerk Dashboard → **SSO connections → Add connection → Apple.** Enable it,
 4. **Services → Sign in with Apple for Email Communication** → add Clerk's
    **Email Source** value. This is a *different screen* from step 2 and covers
    the opposite direction: mail TrackJot sends **to** relay addresses, so Apple
-   accepts it. Put the value in **Domains and Subdomains** if it looks like a
-   domain (`clkmail.trackjot.com`) or **Email Addresses** if it looks like an
-   address.
+   accepts it.
+
+   Clerk's value is an **address** — `bounces+<digits>@clkmail.trackjot.com` —
+   so it goes in **Email Addresses**. Register the **domain**
+   `clkmail.trackjot.com` as well, in the other box: Apple covers every address
+   at a registered domain, so the domain survives Clerk changing that `+` tag,
+   which nothing guarantees will stay put. The domain qualifies because it is
+   DKIM-signed through the `clk._domainkey` CNAME.
+
+   Both entries coexist. Adding the domain later is additive — there is no need
+   to remove the address first, and doing so would only open a gap.
 
    Easy to end up here while hunting for step 2's fields — both screens talk
    about domains, and neither says which direction it means.
