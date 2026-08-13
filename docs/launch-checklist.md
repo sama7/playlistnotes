@@ -51,6 +51,29 @@ Clerk shows the exact records under **Domains**. They are `CNAME`s, typically at
 > but **send yourself a test sign-in email afterwards** and confirm it arrives
 > rather than assuming.
 
+
+**TTL: 600 seconds** (Custom), matching the apex A record. TTL is how long a
+*wrong* value stays cached — at 600s a typo costs ten minutes to correct, at the
+30-minute default it costs thirty. No reason to raise it afterwards at this
+scale.
+
+**The Name field takes the prefix only** — `clerk`, not `clerk.trackjot.com`.
+GoDaddy appends the domain itself.
+
+**Use "Add More Records" and enter all five before saving — but if any row shows
+a validation error, fix or delete it first.** GoDaddy holds the entire batch
+until every pending row is valid, and the table below optimistically renders
+changes that have not actually committed. That is precisely what silently
+blocked the apex A record the first time.
+
+| Name | Value |
+| --- | --- |
+| `clerk` | `frontend-api.clerk.services` |
+| `accounts` | `accounts.clerk.services` |
+| `clkmail` | `mail.gqrzko06589u.clerk.services` |
+| `clk._domainkey` | `dkim1.gqrzko06589u.clerk.services` |
+| `clk2._domainkey` | `dkim2.gqrzko06589u.clerk.services` |
+
 Propagation can take up to 48 hours. Clerk shows a **Deploy certificates**
 button once the records verify — press it.
 
