@@ -7,7 +7,7 @@ Durable handoff between sessions. Read this before relying on chat context. Upda
 **Checkpoint 1a: PASSED.** The schema review produced two corrections, both now merged — `album_artists` was built, and the `Provider` enum was cut back to authoritative sources.
 **Next milestone:** the Clerk → SuperTokens migration, which is the last piece of scope with a design decision left in it. Everything after it is verification and polish.
 
-**Progress: roughly 96%.** Estimated 2–4 hours remain to a public release, and none of it is on the critical path for a tester actually using the product.
+**Progress: roughly 97%.** Estimated 2–4 hours remain to a public release, and none of it is on the critical path for a tester actually using the product.
 
 The remaining work is an auth-provider migration, the browser specs that depend
 on it, and an accessibility pass. No unknowns of the kind that produced the
@@ -648,11 +648,41 @@ instances. Zero occurrences after the secret landed. A key swap has an
 unavoidable ordering gap; on a host with real traffic it would be worth
 sequencing deliberately rather than discovering.
 
+## Sign in with Apple — live, 2026-08-13
+
+Three sign-in methods now: email code, Google, and Apple. Verified through a
+real browser rather than assumed — the Apple button renders beside Google, and
+clicking it reaches `appleid.apple.com` with:
+
+    client_id     HHDCP3JTWP-com.trackjot.app
+    redirect_uri  https://clerk.trackjot.com/v1/oauth_callback
+    scope         name email
+
+Apple then renders its own prompt reading *"Use your Apple Account to sign in to
+TrackJot"*, which is the conclusive check: Apple matched the Services ID,
+accepted the redirect URI, and resolved the app name. An unregistered client or
+a mismatched redirect would have produced an error page at the same host, which
+is why the assertion is on the page content rather than the hostname.
+
+Two corrections to guidance given during setup:
+
+- **The domain-association file was a false alarm.** It was raised as a possible
+  blocker; `clerk.trackjot.com/.well-known/apple-developer-domain-association.txt`
+  still 404s and Apple accepted the configuration anyway. It is not required for
+  the web OAuth flow.
+- **"Apple has no web-only path" was badly phrased** and read as though web
+  sign-in were compromised. Only the *configuration* lacks a web-only route: the
+  Services ID must attach to a primary App ID, which is paperwork rather than a
+  commitment to ship an iOS app.
+
+The App ID is registered as **primary**, so a future iOS share extension can be
+grouped against it and keep the same Apple subject — without that, the same
+person would arrive as two identities across web and app.
+
 ## What is left before a public release
 
 | # | Work | Est. | Blocked? |
 | --- | --- | --- | --- |
-| 2 | **Sign in with Apple** — Services ID and key in the Apple portal, then Clerk. Now unblocked by the canonical domain. Apple's Hide-My-Email relay will not match a Google or email identity, so Clerk cannot auto-link it. | 45 min | **needs dashboard access** |
 | 4 | **Screen-reader pass** over the signed-in surfaces. Axe reports zero violations everywhere including populated pages, but that is a floor. | 1 h | no |
 | 5 | **Clerk Pro** — ~90-day inactivity timeout, absolute maximum disabled, passkeys once the domain is canonical. | 30 min | **at invite time** |
 | 6 | **Drive backup account** — move to a TrackJot-owned Google account. | 30 min | **at invite time** |

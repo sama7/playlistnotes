@@ -16,7 +16,7 @@ and doing Apple first means doing it twice.
 | Invite code | `jot-2026-preview` |
 | Clerk | **production** instance on `clerk.trackjot.com` |
 | Google sign-in | TrackJot's own OAuth credentials |
-| Apple sign-in | not configured |
+| Apple sign-in | live and verified end to end |
 | Database | droplet-local `trackjot`, 0 users, 0 notes |
 | Backups | hourly, encrypted, mirrored to Drive, restore rehearsed |
 
@@ -131,7 +131,7 @@ Tell me when 1a–1c are done and I will do 1d, rebuild, redeploy, and verify.
 
 ---
 
-## 2. Sign in with Apple (~45 minutes)
+## 2. Sign in with Apple — ✅ DONE 2026-08-13
 
 Only after step 1, because Apple needs the production Frontend API URL.
 
@@ -189,11 +189,10 @@ Clerk Dashboard → **SSO connections → Add connection → Apple.** Enable it,
    actually handles the OAuth callback, which belongs to Clerk rather than to the
    application.
 
-   If Apple offers a **Verify** button, it looks for
-   `https://clerk.trackjot.com/.well-known/apple-developer-domain-association.txt`.
-   That is Clerk's domain to serve, not ours — do not host the file. It 404s
-   before Apple is enabled in Clerk, which is expected; if verification still
-   fails afterwards, that is a Clerk configuration problem rather than a DNS one.
+   **The domain-association file turned out not to matter.** It was flagged here
+   as a possible blocker; it still 404s on `clerk.trackjot.com` and Apple
+   accepted the configuration regardless, so it is not required for the web
+   OAuth flow. Do not host it.
 3. **Keys → +** — register a key, enable **Sign In with Apple**, configure it
    against the App ID. Save the **Key ID** and download the `.p8`.
    **It can only be downloaded once.**
