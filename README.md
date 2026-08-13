@@ -69,7 +69,11 @@ about. Tags are scoped per user, so your vocabulary is yours.
 **Import a CSV.** For the two things no API will serve: your private playlists,
 and Spotify's editorial ones.
 
-**Private preview.** The staging host is behind an invite gate that runs *before*
+**Sign in three ways, arrive as one person.** Email code, Google, or Apple — all
+resolving to a single account, verified in production rather than assumed. No
+streaming login anywhere.
+
+**Private preview.** The host is behind an invite gate that runs *before*
 authentication, so an uninvited visitor never reaches a sign-up form. Share links
 bypass it deliberately — someone sent a public note has no code and should not
 need one.
@@ -275,10 +279,16 @@ make the documentation lie about its own history.
 
 ## Status
 
-Roughly nine tenths of the way to a public release. **240+ tests**: unit,
+Live at `https://trackjot.com` on its own Clerk production instance, gated and
+unindexed. Roughly 97% of the way to a public release. **240+ tests**: unit,
 integration against a real PostgreSQL, and Playwright against the deployed host.
 Live, gated, and `noindex` at `https://trackjot.com`.
 
-Remaining before an invite: an auth-provider migration, signed-in browser specs,
-and an accessibility pass. Details and estimates in
-[`docs/migration-status.md`](docs/migration-status.md).
+Remaining: a manual screen-reader pass, and the switches that belong to launch
+day — Clerk Pro's longer session, passkeys, and indexing. Details in
+[`docs/migration-status.md`](docs/migration-status.md) and
+[`docs/launch-checklist.md`](docs/launch-checklist.md).
+
+`scripts/retention.mjs` reports the only number that matters: how many people
+signed up, how many wrote something, and how many came back on a later day and
+wrote again.

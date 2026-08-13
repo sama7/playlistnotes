@@ -132,7 +132,7 @@ Enrichment across MusicBrainz, Last.fm, Apple Music, Tidal, and Wikipedia is exp
 Unless the user explicitly changes a decision, implement the following:
 
 1. TrackJot has first-party accounts managed through an established authentication provider or library.
-2. Initial sign-in methods are email one-time code and Google. Apple is deferred until a native application or demonstrated demand.
+2. Sign-in methods are email one-time code, Google, and **Apple** — all three live on the production instance as of 2026-08-13. Apple was originally deferred pending a native app or demonstrated demand; it was configured early instead because it binds to a domain and to a primary App ID, and doing it after the iOS share extension exists would mean the same person arriving as two Apple subjects across web and app.
 3. A user can paste a Spotify track link and create a note without authorizing Spotify.
 4. **A public playlist link imports a collection. A playlist link never *infers* one.** ⚠️ **This rule was reversed on 2026-08-10; the original text is preserved in §11 for the reasoning.** The original assumed TrackJot could not read a playlist's tracks without user OAuth. Testing disproved it: Client Credentials authenticates the *application*, so user-created public playlists enumerate fully — verified against three playlists from three owners at 4, 42 and 50 tracks. What remains genuinely unreadable is Spotify's own editorial playlists (404 in Development Mode) and anything private; both are refused with an explanation and pointed at CSV import. **The surviving invariant is narrower and still absolute: a collection is created only from an enumerated tracklist or an uploaded file. A link that cannot be enumerated creates nothing — no empty collection, no placeholder items, no bookmark.** Apple Music behaves the reverse way and serves its editorial playlists; both providers are handled by the same rule.
 5. A user can populate a TrackJot collection snapshot from an Exportify-compatible or documented neutral CSV. The uploaded file—not a playlist iframe—is authoritative for its item list.
@@ -586,7 +586,7 @@ Exit criteria: committed instructions are internally consistent, legacy data is 
 - Configure formatting, linting, tests, and CI.
 - Configure PostgreSQL and Prisma migrations.
 - Implement the initial schema.
-- Integrate Clerk email OTP and Google login.
+- Integrate Clerk email OTP, Google, and Apple login.
 - Implement local user upsert from verified auth subject.
 - Add a redacted environment template and setup documentation.
 - Seed data must cover the cases that are hard to picture in the abstract: a multi-artist track, the same recording twice in one collection, two users holding private notes on the same recording, an `origin = user` manual entry, a note carrying playlist context, and two snapshots of one collection.
