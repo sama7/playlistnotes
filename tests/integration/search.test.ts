@@ -1,7 +1,7 @@
 import { PrismaClient, Provider } from "@prisma/client";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { searchNotes } from "@/lib/notes/search";
-import { createNote } from "@/lib/notes/service";
+import { createCollectionNote, createNote } from "@/lib/notes/service";
 import { resolveByProviderId } from "@/lib/music/resolve-recording";
 import { resetDatabase } from "./reset";
 
@@ -129,5 +129,53 @@ describe("searchNotes", () => {
     const { ada } = await fixture();
     const results = await searchNotes(ada.id, "' OR 1=1 --");
     expect(results).toEqual([]);
+  });
+});
+
+/**
+ * A note about a collection has no recording, and the search query joins to
+ * `recordings`. An inner join there silently drops every collection-level note
+ * from search — findable-later is the one promise this product makes, so the
+ * join type is asserted rather than assumed.
+ */
+describe("searchNotes over collection-level notes", () => {
+  it("finds a note about a collection, matching on its own words", async () => {
+    const { ada } = await fixture();
+    const collection = await prisma.collection.create({
+      data: { ownerId: ada.id, name: "August, mostly at night" },
+    });
+    await createCollectionNote(ada.id, {
+      collectionId: collection.id,
+      body: "the drive home tape",
+    });
+
+    const results = await searchNotes(ada.id, "drive home");
+
+    expect(results).toHaveLength(1);
+    expect(results[0]!.recordingTitle).toBe("August, mostly at night");
+  });
+
+  it("finds it by the collection's name too", async () => {
+    const { ada } = await fixture();
+    const collection = await prisma.collection.create({
+      data: { ownerId: ada.id, name: "Reykjavik" },
+    });
+    await createCollectionNote(ada.id, {
+      collectionId: collection.id,
+      body: "played this end to end on the bus",
+    });
+
+    expect(await searchNotes(ada.id, "Reykjavik")).toHaveLength(1);
+  });
+
+  it("still does not leak it to another user", async () => {
+    const { ada, blue } = await fixture();
+    const collection = await prisma.collection.create({
+      data: { ownerId: ada.id, name: "Reykjavik" },
+    });
+    await createCollectionNote(ada.id, { collectionId: collection.id, body: "private thought" });
+
+    expect(await searchNotes(blue.id, "Reykjavik")).toHaveLength(0);
+    expect(await searchNotes(blue.id, "private thought")).toHaveLength(0);
   });
 });

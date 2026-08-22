@@ -60,22 +60,37 @@ export default async function SharedCollectionPage({
       </p>
       {collection.description && <p>{collection.description}</p>}
 
+      {collection.about && <blockquote className="shared-note">{collection.about}</blockquote>}
+
       <ol className="tracklist">
         {collection.tracks.map((track) => (
           <li key={track.position} className="track">
-            <span className="track-num note">{track.position + 1}</span>
-            <div className="track-main">
-              <div className="track-title">
-                {track.providerUrl ? (
-                  <a href={track.providerUrl} target="_blank" rel="noopener noreferrer">
-                    {track.title}
-                  </a>
-                ) : (
-                  track.title
-                )}
+            <div className="track-line">
+              <span className="track-num note">{track.position + 1}</span>
+              <div className="track-main">
+                <div className="track-title">
+                  {track.providerUrl ? (
+                    <a href={track.providerUrl} target="_blank" rel="noopener noreferrer">
+                      {track.title}
+                    </a>
+                  ) : (
+                    track.title
+                  )}
+                </div>
+                <div className="note">{track.artistDisplay}</div>
               </div>
-              <div className="note">{track.artistDisplay}</div>
             </div>
+            {/*
+              Only notes the owner explicitly ticked reach this page. They come
+              from a query that asks for notes and nothing else, gated on a
+              per-note boolean — the tracklist query above still cannot return a
+              note at all. See lib/collections/service.ts.
+            */}
+            {track.notes.map((body, index) => (
+              <blockquote key={index} className="shared-note">
+                {body}
+              </blockquote>
+            ))}
           </li>
         ))}
       </ol>

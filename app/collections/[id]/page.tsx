@@ -2,7 +2,10 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { TrackNote } from "./track-note";
+import { describeTimestamps, formatDay } from "@/lib/format-date";
+import { providerLabel } from "@/lib/notes/list";
+import { CollectionHeader } from "./collection-header";
+import { TrackList } from "./track-list";
 import { SharePanel } from "./share-panel";
 
 export const dynamic = "force-dynamic";
@@ -27,19 +30,30 @@ export default async function CollectionPage({
   const collection = await prisma.collection.findFirst({
     where: { id, ownerId: user.id },
     include: {
+      // The note about the collection as a whole. Scoped to this user even
+      // though the collection is already theirs — the relation is not itself
+      // owner-scoped, and defence in depth here costs nothing.
+      notes: {
+        where: { ownerId: user.id },
+        orderBy: { createdAt: "asc" },
+        take: 1,
+        select: { id: true, body: true, sharedInCollection: true },
+      },
       items: {
         orderBy: { position: "asc" },
         include: {
           recording: {
             include: {
               artists: { orderBy: { position: "asc" }, include: { artist: true } },
-              externalIds: true,
+              externalIds: { take: 1 },
+              album: { select: { title: true, artworkThumbUrl: true, artworkUrl: true } },
             },
           },
-          // Scoped to this user even though the collection is already theirs:
-          // the relation is not itself owner-scoped, and defence in depth here
-          // costs nothing.
-          notes: { where: { ownerId: user.id }, orderBy: { createdAt: "asc" } },
+          notes: {
+            where: { ownerId: user.id },
+            orderBy: { createdAt: "asc" },
+            select: { id: true, body: true, sharedInCollection: true },
+          },
         },
       },
     },
@@ -49,25 +63,29 @@ export default async function CollectionPage({
 
   const annotated = collection.items.filter((i) => i.notes.length > 0).length;
   const baseUrl = process.env.APP_BASE_URL ?? "http://localhost:3100";
+  const rootNote = collection.notes[0] ?? null;
+
+  const timestamps = collection.sourceSnapshotAt
+    ? `imported ${formatDay(collection.sourceSnapshotAt)}`
+    : describeTimestamps(collection.createdAt, collection.updatedAt).toLowerCase();
 
   return (
     <main>
-      <p className="eyebrow">Collection snapshot</p>
-      <h1>{collection.name}</h1>
-      <p className="lede">
-        {collection.items.length} track{collection.items.length === 1 ? "" : "s"}
-        {annotated > 0 ? ` · ${annotated} annotated` : ""}
-        {collection.sourceSnapshotAt
-          ? ` · imported ${collection.sourceSnapshotAt.toISOString().slice(0, 10)}`
-          : ""}
-      </p>
-      {collection.sourceUrl && (
-        <p className="note">
-          <a href={collection.sourceUrl} target="_blank" rel="noopener noreferrer">
-            Open the original
-          </a>
-        </p>
-      )}
+      <CollectionHeader
+        collectionId={collection.id}
+        name={collection.name}
+        description={collection.description}
+        kindLabel={collection.sourceUrl ? "Collection snapshot" : "Collection"}
+        artworkUrl={collection.artworkUrl}
+        trackCount={collection.items.length}
+        annotatedCount={annotated}
+        timestamps={timestamps}
+        sourceUrl={collection.sourceUrl}
+        sourceName={providerLabel(collection.sourceProvider)}
+        canRefresh={Boolean(collection.sourceProvider && collection.sourceId)}
+        refreshedAt={collection.refreshedAt}
+        rootNote={rootNote ? { id: rootNote.id, body: rootNote.body } : null}
+      />
 
       <SharePanel
         collectionId={collection.id}
@@ -75,46 +93,55 @@ export default async function CollectionPage({
         shareToken={collection.shareToken}
         baseUrl={baseUrl}
         trackCount={collection.items.length}
-        annotatedCount={annotated}
+        notes={[
+          ...(rootNote
+            ? [
+                {
+                  id: rootNote.id,
+                  body: rootNote.body,
+                  shared: rootNote.sharedInCollection,
+                  trackTitle: null,
+                },
+              ]
+            : []),
+          ...collection.items.flatMap((item) =>
+            item.notes.map((n) => ({
+              id: n.id,
+              body: n.body,
+              shared: n.sharedInCollection,
+              trackTitle: item.recording.title,
+            })),
+          ),
+        ]}
       />
 
-      <ol className="tracklist">
-        {collection.items.map((item) => {
-          const external = item.recording.externalIds[0];
-          const artists =
-            item.recording.artists.length > 0
-              ? item.recording.artists.map((ra) => ra.artist.name).join(", ")
-              : item.recording.artistDisplay;
-
-          return (
-            <li key={item.id} className="track">
-              <span className="track-num note">{item.position + 1}</span>
-              <div className="track-main">
-                <div className="track-title">
-                  {external?.providerUrl ? (
-                    <a href={external.providerUrl} target="_blank" rel="noopener noreferrer">
-                      {item.recording.title}
-                    </a>
-                  ) : (
-                    item.recording.title
-                  )}
-                </div>
-                {/* Linked entities where we have them, the raw credit where we
-                    do not. The display string is never reconstructed from the
-                    entities, so an artist we failed to link is still shown. */}
-                <div className="note">{artists}</div>
-
-                <TrackNote
-                  collectionItemId={item.id}
-                  collectionId={collection.id}
-                  trackTitle={item.recording.title}
-                  note={item.notes[0] ? { id: item.notes[0].id, body: item.notes[0].body } : null}
-                />
-              </div>
-            </li>
-          );
+      <TrackList
+        collectionId={collection.id}
+        tracks={collection.items.map((item) => {
+          const recording = item.recording;
+          const external = recording.externalIds[0];
+          return {
+            id: item.id,
+            position: item.position + 1,
+            title: recording.title,
+            artists:
+              recording.artists.length > 0
+                ? recording.artists.map((ra) => ra.artist.name).join(", ")
+                : recording.artistDisplay,
+            albumTitle: recording.album?.title ?? recording.releaseTitle,
+            artworkThumbUrl:
+              recording.artworkThumbUrl ??
+              recording.album?.artworkThumbUrl ??
+              recording.artworkUrl ??
+              recording.album?.artworkUrl ??
+              null,
+            artworkUrl: recording.artworkUrl ?? recording.album?.artworkUrl ?? null,
+            providerUrl: external?.providerUrl ?? null,
+            providerName: providerLabel(external?.provider ?? null),
+            note: item.notes[0] ? { id: item.notes[0].id, body: item.notes[0].body } : null,
+          };
         })}
-      </ol>
+      />
 
       <p className="note" style={{ marginTop: "2rem" }}>
         <Link href="/collections">All collections</Link> · <Link href="/notes">Notes</Link>

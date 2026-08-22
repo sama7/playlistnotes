@@ -232,7 +232,7 @@ The authenticated server session supplies `auth_subject`. Never accept the actin
 - `duration_ms integer` — **milliseconds, because that is what every provider sends.** Spotify returns `duration_ms`, Apple/iTunes returns `trackTimeMillis`, MusicBrainz returns `length` in ms; Deezer is the lone exception in seconds. Storing seconds would discard precision at the door for no gain: `INTEGER` holds both, display rounds anyway, and totalling a long collection from per-track seconds accumulates visible drift. Matching deliberately does **not** use the raw value — `normalized_key` buckets duration into five-second bands, because sub-second differences between pressings are noise. Keep the precision, round at the point of use.
 - `release_title text`
 - `release_date date`
-- `artwork_url text`
+- `artwork_url text` / `artwork_thumb_url text`
 - `merged_into_id uuid null references recordings(id)`
 - `canonical_metadata jsonb not null default '{}'`
 - timestamps
@@ -272,10 +272,32 @@ Mirrors `recording_external_ids` exactly: `id`, `artist_id`, `provider`, `provid
 - `primary_artist_id uuid null references artists(id)`
 - `artist_display text` — raw album-artist string as given
 - `release_date date`
-- `artwork_url text`
+- `artwork_url text` / `artwork_thumb_url text`
 - timestamps
 
 Plus `album_external_ids`, mirroring `artist_external_ids`.
+
+#### Cover art
+
+`albums`, `recordings` and `collections` each store **two URLs** — a full
+rendition for a page hero and a thumbnail for list rows — and never image bytes.
+"Linked, never rehosted" is a licensing position first, but it also means
+storage grows with users rather than with the size of the catalog, and link rot
+degrades to a missing image rather than a broken page.
+
+The providers differ in a way that decides the shape of `lib/music/artwork.ts`:
+**Spotify returns a fixed set of renditions** (typically 640/300/64) so we pick
+from what exists, while **Apple returns a `{w}x{h}` template** so we request
+exactly the sizes we render.
+
+Two rules on the render side:
+
+- **Do not route provider images through `next/image`.** The optimizer fetches,
+  re-encodes and caches every image on the droplet — rehosting under another
+  name, on a 2 GB box shared with MKDb's PostgreSQL.
+- **Check the host before rendering** (`safeArtwork`). A recording can be
+  created from user-typed metadata, and an `<img>` pointed at an arbitrary host
+  leaks the viewer's IP and turns the page into a tracking beacon.
 
 **There is deliberately no `album_artists` join table.** Album-level multi-artist credits are far rarer than track-level features and nothing in the product surfaces them yet, so `primary_artist_id` plus `artist_display` suffices. This deferral is safe for one specific reason — **retain the identifiers, defer only the structure**: the full `Album Artist URI(s)` list is persisted in the album's `source_metadata`, and the full `Artist URI(s)` list in the recording's, so a future `album_artists` table is a pure backfill from data already held, with no reconstruction from strings. Deferring artist linkage *entirely* would not have had this property, which is why entity tables ship now and the album join table does not.
 
@@ -301,20 +323,44 @@ Do not invent a provider ID merely to fill this table. `source_metadata` contain
 
 - `id uuid primary key`
 - `owner_id uuid references users(id)`
-- `recording_id uuid references recordings(id)`
+- `recording_id uuid **null** references recordings(id)`
+- `collection_id uuid **null** references collections(id) on delete cascade`
 - `collection_item_id uuid null references collection_items(id) **on delete set null**`
 - `body text not null`
 - `display_title text` / `display_artist text` — per-note overrides, rendered as `override ?? canonical`
-- `share_token text unique` — random, rotatable; used for `unlisted` URLs
+- `share_token text unique` — random; used for `unlisted` and `public` URLs
 - `visibility` enum: `private`, `unlisted`, `public`
 - `published_at timestamptz`
 - timestamps
+
+**A note is about exactly one of a recording or a collection**, enforced by
+database CHECK constraints rather than by convention:
+
+- `notes_exactly_one_subject` — `num_nonnulls(recording_id, collection_id) = 1`
+- `notes_context_requires_recording` — `collection_item_id is null or recording_id is not null`
+
+This is the collection-level journaling §3a called the honest form and deferred:
+"this playlist got me through February" is a real thought with nowhere to live
+while `recording_id` was NOT NULL. Deleting a collection **cascades only its own
+note**; notes about its tracks survive as notes about those tracks, which is
+what `collection_item_id`'s `ON DELETE SET NULL` is for.
+
+Any query that reads notes generically must LEFT JOIN **both** subjects. An
+inner join on `recordings` silently drops every collection-level note — that is
+how search would stop finding half the notes without failing.
 
 `ON DELETE SET NULL` is a backstop, not a mechanism: **a user's note must never be deleted or silently retargeted by an import.** See `collection_items` for the snapshot rule that makes this true by construction.
 
 `display_title` / `display_artist` exist because `recordings` are shared across users. User-typed metadata initializes a recording at creation; afterwards it is stored here, so **one user's correction can never change what another user saved**.
 
-`share_token` exists so an unlisted link can be **revoked by rotation** without destroying the note. Do not expose the internal note UUID as the share URL. Unlisted pages must send `X-Robots-Tag: noindex`.
+`share_token` exists so a shared link can be **revoked without destroying the
+note**. Revocation is *setting visibility back to private*, which clears the
+token; sharing again mints a new one. **There is deliberately no separate
+"rotate" control**: it was never a distinct user intent, and offering it as a
+peer of "make private" asked people to reason about token lifecycles to answer a
+question they hold as an audience — nobody, anyone with the link, or everybody.
+Do not expose the internal note UUID as the share URL. Unlisted pages must send
+`X-Robots-Tag: noindex`.
 
 Store note content as text or a deliberately chosen structured editor format. Do not store HTML produced from untrusted input. Escape on output according to the renderer.
 

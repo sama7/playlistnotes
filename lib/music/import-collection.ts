@@ -10,10 +10,15 @@ import type { ImportableCollection } from "./importable";
  *   - **Entities come from identifiers, never from names.** Every artist and
  *     album is resolved by its Spotify ID. The display strings are stored
  *     alongside for rendering and are never split, parsed, or matched on.
- *   - **Every import is an immutable snapshot.** Re-importing the same playlist
- *     creates a NEW collection rather than mutating the old one, so a note
- *     anchored to a collection item can never be reordered or retargeted
- *     beneath its author.
+ *   - **A note is never deleted or silently retargeted by an import.** This
+ *     used to be guaranteed by refusing to change a collection at all: every
+ *     import made a new immutable snapshot. That protected notes by declining
+ *     the use case — playlists change, and a living one accumulated a pile of
+ *     near-identical collections with the notes scattered across them. A
+ *     collection can now be refreshed in place (see lib/collections/refresh.ts),
+ *     and the guarantee is upheld directly instead: notes re-anchor by
+ *     (recording, occurrence), and anything that loses its slot is orphaned,
+ *     never deleted. A plain import still creates a new collection.
  */
 
 export interface ImportSummary {
@@ -82,10 +87,16 @@ export async function importCollection(
           sourceId: data.providerId || null,
           sourceUrl: data.sourceUrl || null,
           sourceSnapshotAt: new Date(),
+          artworkUrl: data.artwork?.url ?? null,
+          artworkThumbUrl: data.artwork?.thumbUrl ?? null,
           // Positions follow SOURCE ORDER, and duplicates are preserved — a
           // playlist may legitimately contain the same track twice.
           items: {
-            create: recordingIds.map((recordingId, position) => ({ recordingId, position })),
+            create: recordingIds.map((recordingId, position) => ({
+              recordingId,
+              position,
+              occurrence: occurrenceOf(recordingIds, position),
+            })),
           },
         },
       });
@@ -107,4 +118,19 @@ export async function importCollection(
     },
     { timeout: 30_000 },
   );
+}
+
+/**
+ * Which appearance of this recording the item at `position` is, counting from 0.
+ *
+ * Computed at write time so a refresh can re-anchor notes by (recording,
+ * occurrence) without recomputing it — and so the number is stable even if a
+ * later query forgets to order by position.
+ */
+function occurrenceOf(recordingIds: string[], position: number): number {
+  let n = 0;
+  for (let i = 0; i < position; i++) {
+    if (recordingIds[i] === recordingIds[position]) n++;
+  }
+  return n;
 }

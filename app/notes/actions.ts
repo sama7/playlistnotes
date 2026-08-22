@@ -2,18 +2,11 @@
 
 import { revalidatePath } from "next/cache";
 import { requireUser } from "@/lib/auth";
-import { captureFromLink } from "@/lib/music/capture-track";
-import { importFromSpotifyLink } from "@/lib/music/import-from-link";
-import { importFromAppleLink } from "@/lib/music/import-from-apple";
-import { parseSpotifyLink } from "@/lib/music/spotify/parse-link";
-import { parseAppleMusicLink } from "@/lib/music/apple/parse-link";
+import { DatePrecision, PlacePrecision, Visibility } from "@prisma/client";
 import {
   NoteNotFoundError,
-  createNote,
   deleteNote,
-  publishNoteUnlisted,
-  rotateShareToken,
-  unpublishNote,
+  setNoteVisibility,
   updateNote,
 } from "@/lib/notes/service";
 
@@ -27,90 +20,6 @@ import {
  * Errors are returned as state rather than thrown, so a failed capture
  * re-renders the form with what the user typed still in it.
  */
-
-export interface CaptureState {
-  error?: string;
-  /** Set after a successful collection import, so the UI can celebrate it. */
-  imported?: { name: string; count: number; created: number; matched: number };
-  /** Set when metadata could not be fetched and we need the user's help. */
-  needsMetadata?: boolean;
-  values?: { link: string; title: string; artistDisplay: string; body: string };
-}
-
-export async function captureAndCreateNote(
-  _previous: CaptureState,
-  formData: FormData,
-): Promise<CaptureState> {
-  const user = await requireUser();
-
-  const link = String(formData.get("link") ?? "").trim();
-  const title = String(formData.get("title") ?? "").trim();
-  const artistDisplay = String(formData.get("artistDisplay") ?? "").trim();
-  const body = String(formData.get("body") ?? "").trim();
-  const values = { link, title, artistDisplay, body };
-
-  if (!link) return { error: "Paste a Spotify or Apple Music link to get started.", values };
-
-  /**
-   * One box, two providers, two outcomes. An album or playlist link imports a
-   * collection and needs no note text; a track link writes a note. Routing on
-   * what was actually pasted beats making the user pick the right form first,
-   * and it is why the box never asks which service a link came from.
-   */
-  const spotifyKind = parseSpotifyLink(link).kind;
-  const appleKind = parseAppleMusicLink(link).kind;
-  const isCollection =
-    spotifyKind === "album" ||
-    spotifyKind === "playlist" ||
-    appleKind === "album" ||
-    appleKind === "playlist";
-
-  if (isCollection) {
-    const result =
-      appleKind === "album" || appleKind === "playlist"
-        ? await importFromAppleLink(user.id, link)
-        : await importFromSpotifyLink(user.id, link);
-    if (!result.ok) return { error: result.message, values };
-    revalidatePath("/notes");
-    revalidatePath("/collections");
-    return {
-      imported: {
-        name: result.summary.name,
-        count: result.summary.imported,
-        created: result.summary.created,
-        matched: result.summary.matched,
-      },
-    };
-  }
-
-  if (!body) return { error: "Write something about the track.", values };
-
-  const capture = await captureFromLink(link, {
-    fallback: title || artistDisplay ? { title, artistDisplay } : undefined,
-  });
-
-  if (!capture.ok) {
-    return {
-      error: capture.message,
-      // Only this refusal is recoverable by the user filling in more; the
-      // others are explanations, not prompts.
-      needsMetadata: capture.reason === "needs-manual-metadata",
-      // Hand back whatever title we did learn so the user fills one field, not
-      // two. Only reachable on the degraded no-credential path now that the
-      // Web API supplies the artist.
-      values: { ...values, title: values.title || capture.suggested?.title || "" },
-    };
-  }
-
-  try {
-    await createNote(user.id, { recordingId: capture.recording.id, body });
-  } catch {
-    return { error: "Something went wrong saving that note.", values };
-  }
-
-  revalidatePath("/notes");
-  return {};
-}
 
 /**
  * These are bound directly to `<form action=…>`, so they must resolve to void.
@@ -126,12 +35,51 @@ export async function updateNoteAction(noteId: string, formData: FormData): Prom
   if (!body) return;
 
   try {
-    await updateNote(user.id, noteId, { body });
+    await updateNote(user.id, noteId, { body, ...readJournalFields(formData) });
   } catch (error) {
     if (!(error instanceof NoteNotFoundError)) throw error;
   }
 
   revalidatePath("/notes");
+  revalidatePath("/collections");
+}
+
+/**
+ * Read the optional "when" and "where" a note can carry.
+ *
+ * Two details do real work here. The date arrives as `YYYY-MM-DD` from a date
+ * input and is **anchored to the first instant of the stated range** — a note
+ * marked "that year" is stored as January 1st — because the precision, not the
+ * timestamp, is what the product promises to render. And `placePrecision` is a
+ * checkbox, so its absence means `area`: opting out of precision has to be the
+ * thing that happens when nobody does anything.
+ */
+function readJournalFields(formData: FormData) {
+  const rawDate = String(formData.get("experiencedAt") ?? "").trim();
+  const rawPrecision = String(formData.get("experiencedPrecision") ?? "day");
+  const precision: DatePrecision =
+    rawPrecision === "year" || rawPrecision === "month" ? rawPrecision : DatePrecision.day;
+
+  let experiencedAt: Date | null = null;
+  if (rawDate) {
+    const [y, m, d] = rawDate.split("-").map(Number);
+    const month = precision === "year" ? 1 : (m ?? 1);
+    const day = precision === "day" ? (d ?? 1) : 1;
+    // Noon UTC, not midnight: it renders as the intended day in every time zone
+    // this product is likely to display, rather than slipping backwards a day
+    // west of Greenwich.
+    experiencedAt = new Date(Date.UTC(y ?? 1970, month - 1, day, 12));
+  }
+
+  const placeLabel = String(formData.get("placeLabel") ?? "").trim() || null;
+  const exact = formData.get("placePrecision") === "exact";
+
+  return {
+    experiencedAt,
+    experiencedPrecision: experiencedAt ? precision : null,
+    placeLabel,
+    placePrecision: placeLabel ? (exact ? PlacePrecision.exact : PlacePrecision.area) : null,
+  };
 }
 
 export async function deleteNoteAction(noteId: string): Promise<void> {
@@ -144,20 +92,47 @@ export async function deleteNoteAction(noteId: string): Promise<void> {
   revalidatePath("/notes");
 }
 
-export async function publishNoteAction(noteId: string) {
+/**
+ * One control for who can read a note.
+ *
+ * It takes the value **as an argument, not as FormData**, and that is a fix for
+ * a real bug rather than a style preference. The picker is a controlled select
+ * that submitted its own form on change; React restores a controlled input's
+ * DOM value during the change event, and the form's FormData was serialised
+ * after that restore — so every change after the first submitted the *previous*
+ * value and silently did nothing. Passing the chosen value directly removes the
+ * DOM from the path entirely.
+ *
+ * The value is still parsed against the enum here. It arrives from the client,
+ * and it decides whether a private note becomes world-readable; an unrecognised
+ * value is ignored rather than defaulted, since the safe response is "change
+ * nothing".
+ */
+export async function setNoteVisibilityAction(
+  noteId: string,
+  requested: string,
+): Promise<void> {
   const user = await requireUser();
-  await publishNoteUnlisted(user.id, noteId);
+  if (!isVisibility(requested)) return;
+
+  try {
+    await setNoteVisibility(user.id, noteId, requested);
+  } catch (error) {
+    if (!(error instanceof NoteNotFoundError)) throw error;
+  }
+
   revalidatePath("/notes");
+  revalidatePath("/collections");
 }
 
-export async function unpublishNoteAction(noteId: string) {
-  const user = await requireUser();
-  await unpublishNote(user.id, noteId);
-  revalidatePath("/notes");
+/** The no-JS path: a real form submit, same validation, same action. */
+export async function setNoteVisibilityFormAction(
+  noteId: string,
+  formData: FormData,
+): Promise<void> {
+  await setNoteVisibilityAction(noteId, String(formData.get("visibility") ?? ""));
 }
 
-export async function rotateShareTokenAction(noteId: string) {
-  const user = await requireUser();
-  await rotateShareToken(user.id, noteId);
-  revalidatePath("/notes");
+function isVisibility(value: string): value is Visibility {
+  return Object.values(Visibility).includes(value as Visibility);
 }

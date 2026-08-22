@@ -1,0 +1,138 @@
+"use client";
+
+import { useRef, useState } from "react";
+import { safeArtwork } from "@/lib/music/artwork";
+
+/**
+ * Cover art, rendered as a plain `<img>` on purpose.
+ *
+ * `next/image` would route every provider image through this server's optimizer
+ * — fetching, re-encoding and caching it on a 2 GB droplet that also runs
+ * MKDb's PostgreSQL. That is rehosting by another name, and rehosting is the
+ * exact cost we avoid by storing links (see lib/music/artwork.ts). The provider
+ * CDNs are already fast, already cached at the edge, and already sized.
+ *
+ * `safeArtwork` is applied here rather than at every call site, so a URL from
+ * an untrusted source can never become a tracking beacon because one page
+ * forgot to check it.
+ *
+ * **Thumbnails are fetched larger than they are drawn.** A 56px slot on a 3x
+ * phone needs a ~170px source; the 64px rendition this used to request looked
+ * soft on every handset. `fullUrl` is separate so tapping a thumbnail can open
+ * the real cover without a second lookup.
+ */
+export function CoverArt({
+  url,
+  fullUrl,
+  size,
+  alt = "",
+  className,
+  title,
+}: {
+  url: string | null | undefined;
+  /** The large rendition, shown when the art is opened. Defaults to `url`. */
+  fullUrl?: string | null;
+  size: number;
+  /** Empty by default: next to a title and artist, the cover adds nothing a
+   *  screen reader needs to hear. */
+  alt?: string;
+  className?: string;
+  /** What the art is of — used for the dialog's accessible name. */
+  title?: string;
+}) {
+  const src = safeArtwork(url);
+  const large = safeArtwork(fullUrl) ?? src;
+  const classes = ["cover", className].filter(Boolean).join(" ");
+
+  if (!src) {
+    return (
+      <span
+        className={`${classes} cover-empty`}
+        style={{ width: size, height: size }}
+        aria-hidden="true"
+      />
+    );
+  }
+
+  const image = (
+    // eslint-disable-next-line @next/next/no-img-element -- see the note above
+    <img
+      className={classes}
+      src={src}
+      alt={alt}
+      width={size}
+      height={size}
+      loading="lazy"
+      decoding="async"
+      // Cover art is decorative and cross-origin; there is no reason to tell a
+      // provider's CDN which page of ours the viewer is on.
+      referrerPolicy="no-referrer"
+    />
+  );
+
+  /**
+   * Always openable when there is art at all, even when the thumbnail and the
+   * full rendition are the same URL. A 56px square blown up to fill the screen
+   * is the point of the gesture; refusing it because we happen to be showing
+   * one file at two sizes would be a technicality the person tapping does not
+   * share.
+   */
+  return <ArtworkButton image={image} src={large ?? src} title={title} size={size} />;
+}
+
+function ArtworkButton({
+  image,
+  src,
+  title,
+  size,
+}: {
+  image: React.ReactNode;
+  src: string;
+  title?: string;
+  size: number;
+}) {
+  const [open, setOpen] = useState(false);
+  const dialog = useRef<HTMLDialogElement>(null);
+
+  function show() {
+    setOpen(true);
+    dialog.current?.showModal();
+  }
+
+  function hide() {
+    dialog.current?.close();
+    setOpen(false);
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        className="cover-button"
+        style={{ width: size, height: size }}
+        onClick={show}
+        aria-label={title ? `See the cover for ${title}` : "See the full-size cover"}
+      >
+        {image}
+      </button>
+
+      {/*
+        A native <dialog>, so Escape, the backdrop, focus trapping and the top
+        layer all come from the platform rather than from a scroll-lock hack.
+        The image is only mounted while open — a list of fifty tracks must not
+        eagerly fetch fifty 640px covers for dialogs nobody opened.
+      */}
+      <dialog ref={dialog} className="art-dialog" onClose={() => setOpen(false)}>
+        {open && (
+          <>
+            {/* eslint-disable-next-line @next/next/no-img-element -- see above */}
+            <img src={src} alt={title ? `Cover art for ${title}` : "Cover art"} referrerPolicy="no-referrer" />
+            <button type="button" className="art-dialog-close" onClick={hide}>
+              Close
+            </button>
+          </>
+        )}
+      </dialog>
+    </>
+  );
+}

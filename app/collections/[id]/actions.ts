@@ -3,7 +3,13 @@
 import { revalidatePath } from "next/cache";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { NoteNotFoundError, createNote, deleteNote, updateNote } from "@/lib/notes/service";
+import {
+  NoteNotFoundError,
+  createCollectionNote,
+  createNote,
+  deleteNote,
+  updateNote,
+} from "@/lib/notes/service";
 
 /**
  * Writing a note about a track **in the context of a collection**.
@@ -87,4 +93,42 @@ export async function deleteCollectionNoteAction(
   }
   revalidatePath(`/collections/${collectionId}`);
   revalidatePath("/notes");
+}
+
+/**
+ * A note about the collection itself, rather than about a track in it.
+ *
+ * "This playlist got me through February" is not a statement about any one
+ * song, and until now there was nowhere to put it — `notes.recording_id` was
+ * NOT NULL, so the thought had to be attached to an arbitrary track or
+ * abandoned. It now attaches to the collection, and the database CHECK keeps
+ * the two subjects from ever being confused.
+ */
+export async function saveCollectionRootNoteAction(
+  collectionId: string,
+  _previous: CollectionNoteState,
+  formData: FormData,
+): Promise<CollectionNoteState> {
+  const user = await requireUser();
+  const body = String(formData.get("body") ?? "").trim();
+  const noteId = String(formData.get("noteId") ?? "").trim();
+
+  if (!body) return { error: "Write something first.", body };
+
+  try {
+    if (noteId) {
+      await updateNote(user.id, noteId, { body });
+    } else {
+      await createCollectionNote(user.id, { collectionId, body });
+    }
+  } catch (error) {
+    if (error instanceof NoteNotFoundError) {
+      return { error: "That collection isn't available.", body };
+    }
+    return { error: "Something went wrong saving that note.", body };
+  }
+
+  revalidatePath(`/collections/${collectionId}`);
+  revalidatePath("/notes");
+  return {};
 }

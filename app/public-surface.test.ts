@@ -52,10 +52,15 @@ describe("public routes", () => {
 describe("shared pages leak nothing through their link preview", () => {
   for (const file of ["n/[token]/page.tsx", "c/[token]/page.tsx"]) {
     it(`${file} builds its metadata from constants, not from the record`, async () => {
-      const source = await readFile(`${appDir}${file}`, "utf8");
+      const source = stripComments(await readFile(`${appDir}${file}`, "utf8"));
 
       // A generateMetadata function receives the token and could reach the
       // note; a static export cannot. The distinction is the whole guarantee.
+      //
+      // Comments are stripped first: the rule is worth explaining *in* the file
+      // it governs, and a bare substring check would forbid naming the thing it
+      // forbids — which pressures the next person to delete the explanation
+      // rather than keep the guarantee.
       expect(source).not.toContain("generateMetadata");
       expect(source).toMatch(/export const metadata: Metadata = \{/);
 
@@ -69,3 +74,8 @@ describe("shared pages leak nothing through their link preview", () => {
     });
   }
 });
+
+/** Remove block and line comments, so a rule can be documented where it applies. */
+function stripComments(source: string): string {
+  return source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+}

@@ -31,6 +31,8 @@ const TIMEOUT_MS = 6_000;
  *  it: a known track never reaches this file. */
 const MAX_TRACKS = 300;
 
+import { fromItunesArtwork, type Artwork } from "../artwork";
+
 export interface AppleTrackData {
   id: string;
   name: string;
@@ -41,10 +43,12 @@ export interface AppleTrackData {
   durationMs: number | null;
   trackNumber: number | null;
   releaseDate: string | null;
+  artwork?: Artwork;
 }
 
 export interface AppleCollectionData {
   id: string;
+  artwork?: Artwork;
   name: string;
   artistName: string;
   artistId: string | null;
@@ -65,6 +69,7 @@ interface RawResult {
   trackNumber?: number;
   trackCount?: number;
   releaseDate?: string;
+  artworkUrl100?: string;
 }
 
 async function lookup(params: string, fetchImpl: typeof fetch): Promise<RawResult[] | null> {
@@ -104,6 +109,7 @@ function shapeTrack(raw: RawResult): AppleTrackData | null {
     durationMs: typeof raw.trackTimeMillis === "number" ? raw.trackTimeMillis : null,
     trackNumber: typeof raw.trackNumber === "number" ? raw.trackNumber : null,
     releaseDate: raw.releaseDate ?? null,
+    artwork: fromItunesArtwork(raw.artworkUrl100),
   };
 }
 

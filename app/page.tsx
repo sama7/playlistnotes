@@ -95,13 +95,9 @@ export default async function Home() {
         </div>
       </section>
 
-      <footer className="landing-foot">
-        <p className="note">
-          <Link href="/sign-in">Sign in</Link> · TrackJot doesn&rsquo;t track you. It
-          helps you keep track of what you chose to remember. A personal project by
-          Samah.
-        </p>
-      </footer>
+      <p className="note landing-foot">
+        A personal project by Samah. <Link href="/about">More about it</Link>.
+      </p>
     </main>
   );
 }

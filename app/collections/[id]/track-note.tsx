@@ -1,6 +1,7 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useState } from "react";
+import { ConfirmButton } from "@/components/confirm-button";
 import {
   deleteCollectionNoteAction,
   saveCollectionNoteAction,
@@ -18,6 +19,12 @@ import {
  * The collection item id is bound server-side via `bind`, so it is not a form
  * field the browser could alter. Ownership is still re-checked in the action;
  * this only removes the invitation.
+ *
+ * The action is called from an async form handler rather than through
+ * `useActionState` so that a *successful* save can close the editor. With the
+ * hook, the returned state is the only signal, and reacting to it means setting
+ * state from an effect — a cascading render React now warns about, and a worse
+ * way to express "this submit succeeded, so stop editing".
  */
 export function TrackNote({
   collectionItemId,
@@ -31,20 +38,25 @@ export function TrackNote({
   trackTitle: string;
 }) {
   const [open, setOpen] = useState(false);
-  const [state, formAction, pending] = useActionState<CollectionNoteState, FormData>(
-    saveCollectionNoteAction.bind(null, collectionItemId),
-    {},
-  );
+  const [state, setState] = useState<CollectionNoteState>({});
+  const [saving, setSaving] = useState(false);
 
-  // A successful save clears the error and the echoed body; close the editor.
-  const editing = open || Boolean(state.error);
+  async function save(formData: FormData) {
+    setSaving(true);
+    const result = await saveCollectionNoteAction(collectionItemId, state, formData);
+    setSaving(false);
+    setState(result);
+    if (!result.error) setOpen(false);
+  }
 
-  if (!editing) {
+  if (!open) {
     return (
       <div className="track-note">
         {note ? (
           <>
-            <p className="track-note-body">{note.body}</p>
+            {/* The body is rendered by the row itself at every width — see
+                track-list.tsx. Duplicating it here would show it twice in the
+                sheet, which is where the controls live and the content does not. */}
             <div className="row">
               {/*
                 The visible label stays short, but the accessible name carries
@@ -60,15 +72,18 @@ export function TrackNote({
               >
                 Edit
               </button>
-              <form action={deleteCollectionNoteAction.bind(null, collectionId, note.id)}>
-                <button
-                  type="submit"
-                  className="linkish danger-text"
-                  aria-label={`Delete your note about ${trackTitle}`}
-                >
-                  Delete
-                </button>
-              </form>
+              <ConfirmButton
+                label="Delete"
+                title={`Delete your note about ${trackTitle}?`}
+                body={
+                  <>
+                    <blockquote>{note.body}</blockquote>
+                    <p>The track stays in the collection. This can&rsquo;t be undone.</p>
+                  </>
+                }
+                confirmLabel="Delete the note"
+                formAction={deleteCollectionNoteAction.bind(null, collectionId, note.id)}
+              />
             </div>
           </>
         ) : (
@@ -86,7 +101,7 @@ export function TrackNote({
   }
 
   return (
-    <form action={formAction} className="track-note inline-edit">
+    <form action={save} className="track-note inline-edit">
       {note && <input type="hidden" name="noteId" value={note.id} />}
       <label className="visually-hidden" htmlFor={`body-${collectionItemId}`}>
         Your note about {trackTitle}
@@ -105,8 +120,8 @@ export function TrackNote({
         </p>
       )}
       <div className="row">
-        <button type="submit" disabled={pending}>
-          {pending ? "Saving…" : "Save"}
+        <button type="submit" disabled={saving}>
+          {saving ? "Saving…" : "Save"}
         </button>
         <button type="button" className="linkish" onClick={() => setOpen(false)}>
           Cancel

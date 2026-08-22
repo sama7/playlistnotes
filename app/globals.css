@@ -310,21 +310,45 @@ ol.tracklist {
 }
 
 .track {
+  padding: 0.6rem 0;
+  border-top: 1px solid var(--line);
+}
+
+.track-line {
   display: flex;
   gap: 0.9rem;
-  padding: 0.9rem 0;
-  border-top: 1px solid var(--line);
+  align-items: center;
 }
 
 .track-num {
   min-width: 2ch;
   text-align: right;
-  padding-top: 0.1rem;
   font-variant-numeric: tabular-nums;
 }
 
 .track-main { flex: 1; min-width: 0; }
 .track-title { font-weight: 600; }
+
+/* One line each, truncated. A track whose title wraps to three lines turns a
+   50-row playlist into a page you have to hunt through. */
+.track-title,
+.track-main .note,
+.track-album {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.track-album {
+  flex: 0 1 14rem;
+  min-width: 0;
+  margin: 0;
+  text-align: right;
+}
+
+/* The "more" button is the mobile affordance; on a wide screen the details it
+   would reveal are already on the page, so it has nothing to do. */
+.track-more { display: none; }
 
 .track-note { margin-top: 0.5rem; }
 .track-note-body { margin: 0 0 0.35rem; white-space: pre-wrap; }
@@ -446,4 +470,548 @@ summary:focus-visible,
     animation-duration: 0.01ms !important;
     transition-duration: 0.01ms !important;
   }
+}
+
+/* ---- site chrome: header and footer ---- */
+
+.site-nav {
+  max-width: 62rem;
+  margin: 0 auto 2rem;
+  padding-bottom: 0.9rem;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.site-nav .wordmark {
+  font-weight: 700;
+  font-size: 1.05rem;
+  letter-spacing: -0.01em;
+  color: var(--fg);
+  text-decoration: none;
+}
+
+.site-nav nav {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  font-size: 0.9rem;
+}
+
+.site-nav nav a { text-decoration: none; }
+.site-nav nav a:hover { text-decoration: underline; }
+
+button.compact { padding: 0.35rem 0.7rem; font-size: 0.85rem; }
+
+.site-foot {
+  max-width: 62rem;
+  margin: 3rem auto 0;
+  padding-top: 1rem;
+  border-top: 1px solid var(--line);
+}
+
+/* ---- capture: paste a link, or type it in ---- */
+
+.capture-shell { margin: 1.5rem 0 2rem; }
+
+.mode-switch {
+  display: inline-flex;
+  gap: 0.25rem;
+  padding: 0.2rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  margin-bottom: 0.9rem;
+}
+
+button.mode {
+  background: none;
+  border: none;
+  color: var(--muted);
+  border-radius: 999px;
+  padding: 0.35rem 0.9rem;
+  font-size: 0.88rem;
+}
+
+button.mode.active {
+  background: var(--fg);
+  color: var(--bg);
+}
+
+/* Inherits the pill's own colour rather than dimming it. At 0.72rem the text
+   is already below the 18.66px large-text threshold, so any opacity at all put
+   it under the 4.5:1 contrast floor — axe measured 3.16:1. */
+.mode-hint {
+  font-size: 0.72rem;
+  margin-left: 0.35rem;
+}
+
+.capture-shell form.capture { margin: 0; }
+.capture .row input { flex: 1; }
+
+/* What the link turned out to be. Attached visually to the box above it, so it
+   reads as an answer to what was pasted rather than as a second unrelated form. */
+.found {
+  border: 1px solid var(--line);
+  border-top: none;
+  border-radius: 0 0 6px 6px;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.found-head { display: flex; gap: 1rem; align-items: flex-start; }
+.found-meta { min-width: 0; }
+.found-title { display: block; font-size: 1.05rem; }
+.found-meta .eyebrow { margin-bottom: 0.2rem; }
+
+/* ---- cover art ---- */
+
+.cover {
+  border-radius: 4px;
+  object-fit: cover;
+  background: var(--line);
+  flex-shrink: 0;
+  display: block;
+}
+
+.cover-empty { display: block; }
+
+.collection-cover {
+  width: 100%;
+  max-width: 13.75rem;
+  height: auto;
+  aspect-ratio: 1;
+  border-radius: 6px;
+}
+
+/* ---- notes ---- */
+
+.note-head { display: flex; gap: 0.85rem; align-items: flex-start; }
+.note-head-main { flex: 1; min-width: 0; }
+.note-head-main strong a { color: var(--fg); }
+
+.note-body {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.stamp { font-size: 0.78rem; margin: 0; }
+
+.row.actions { gap: 0.85rem; row-gap: 0.5rem; }
+
+.visibility select {
+  font: inherit;
+  font-size: 0.85rem;
+  padding: 0.3rem 0.45rem;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--fg);
+  max-width: 100%;
+}
+
+.chip {
+  display: inline-block;
+  font-size: 0.72rem;
+  padding: 0.1rem 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+/* ---- tag entry and management ---- */
+
+.tag-input { position: relative; flex: 1; min-width: 12rem; }
+.tag-input input { font-size: 0.85rem; padding: 0.35rem 0.5rem; }
+
+ul.suggestions {
+  position: absolute;
+  z-index: 5;
+  top: calc(100% + 2px);
+  left: 0;
+  right: 0;
+  margin: 0;
+  padding: 0.25rem;
+  list-style: none;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  box-shadow: 0 6px 18px rgb(0 0 0 / 12%);
+}
+
+ul.suggestions button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  color: var(--fg);
+  font-size: 0.85rem;
+  padding: 0.3rem 0.45rem;
+  border-radius: 3px;
+}
+
+ul.suggestions button.active,
+ul.suggestions button:hover {
+  background: var(--line);
+}
+
+.tag-bar { margin-bottom: 1.5rem; display: flex; flex-direction: column; gap: 0.5rem; }
+.tag-admin { font-size: 0.85rem; gap: 0.85rem; }
+
+/* ---- collection page ---- */
+
+.collection-head {
+  display: flex;
+  gap: 1.5rem;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.collection-meta { flex: 1; min-width: 16rem; }
+.collection-meta h1 { margin-bottom: 0.35rem; }
+.collection-meta .inline-edit { max-width: 28rem; }
+
+.root-note {
+  margin-top: 1rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  align-items: flex-start;
+}
+
+.root-note.inline-edit { align-items: stretch; }
+.root-note textarea { max-width: 32rem; }
+
+/* The header's one call to action. A link, not a button element, because it
+   navigates — but it should still read as the primary thing to do. */
+.site-nav a.nav-cta {
+  background: var(--fg);
+  color: var(--bg);
+  border-radius: 4px;
+  padding: 0.35rem 0.7rem;
+  font-size: 0.85rem;
+}
+.site-nav a.nav-cta:hover { text-decoration: none; opacity: 0.9; }
+
+/* ---- track sheet: inline on desktop, a bottom sheet on a phone ---- */
+
+.track-details { padding: 0.4rem 0 0.2rem 3.4rem; }
+.sheet-close { display: none; }
+
+/* The sheet's large cover is a phone affordance; inline there is no sheet. */
+.sheet-head .cover,
+.sheet-head .cover-button { display: none; }
+.sheet-head > div > strong,
+.sheet-head > div > .note { display: none; }
+
+/* The note itself reads at every width — it is the reason to open a
+   collection, so it is never the thing hidden behind a control. */
+.track-note-body {
+  margin: 0.35rem 0 0 3.4rem;
+  white-space: pre-wrap;
+}
+
+/*
+  Narrow screens: the album name and the note controls move behind one button
+  and open as a sheet from the bottom edge. Everything is still rendered once —
+  only its position changes — so there is never a second copy of an open
+  textarea to lose your typing in.
+*/
+@media (max-width: 46rem) {
+  .track-album { display: none; }
+
+  .track-more {
+    display: block;
+    background: none;
+    border: none;
+    color: var(--muted);
+    font-size: 1.25rem;
+    line-height: 1;
+    padding: 0.5rem 0.6rem;
+  }
+
+  .track-note-body { margin-left: 0; }
+  .track-details { display: none; }
+
+  .track.sheet-open .track-details {
+    display: block;
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 20;
+    max-height: 85vh;
+    overflow-y: auto;
+    padding: 0.75rem 1.25rem calc(1.25rem + env(safe-area-inset-bottom));
+    background: var(--bg);
+    border-top: 1px solid var(--line);
+    border-radius: 14px 14px 0 0;
+    box-shadow: 0 -8px 28px rgb(0 0 0 / 22%);
+  }
+
+  .track.sheet-open .sheet-close {
+    display: block;
+    margin: 0.75rem 0 0 auto;
+  }
+
+  .track.sheet-open .sheet-head {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+  }
+
+  .track.sheet-open .sheet-head .cover,
+  .track.sheet-open .sheet-head .cover-button {
+    display: block;
+    width: min(60vw, 14rem);
+    height: auto;
+    aspect-ratio: 1;
+  }
+
+  .track.sheet-open .sheet-head > div > strong,
+  .track.sheet-open .sheet-head > div > .note { display: block; }
+
+  .collection-cover { max-width: 9rem; }
+  .site-nav { gap: 0.5rem; }
+  .site-nav nav { gap: 0.75rem; font-size: 0.85rem; }
+}
+
+/* ---- artwork viewer ---- */
+
+button.cover-button {
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: zoom-in;
+  line-height: 0;
+  flex-shrink: 0;
+}
+
+dialog.art-dialog {
+  border: none;
+  background: transparent;
+  padding: 0;
+  max-width: min(92vw, 40rem);
+  max-height: 92vh;
+  overflow: visible;
+}
+dialog.art-dialog::backdrop { background: rgb(0 0 0 / 78%); }
+dialog.art-dialog img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 8px;
+}
+.art-dialog-close {
+  margin: 0.75rem auto 0;
+  display: block;
+}
+
+/* ---- confirmation dialog ---- */
+
+dialog.confirm-dialog {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--bg);
+  color: var(--fg);
+  padding: 1.25rem;
+  max-width: min(92vw, 30rem);
+}
+dialog.confirm-dialog::backdrop { background: rgb(0 0 0 / 55%); }
+dialog.confirm-dialog h2 {
+  margin: 0 0 0.75rem;
+  font-size: 1.05rem;
+  border-bottom: none;
+  padding-bottom: 0;
+}
+.confirm-body p { margin: 0 0 0.6rem; font-size: 0.9rem; }
+.confirm-body blockquote {
+  margin: 0 0 0.6rem;
+  padding: 0.5rem 0.75rem;
+  border-left: 3px solid var(--line);
+  background: var(--line);
+  border-radius: 0 4px 4px 0;
+  font-size: 0.9rem;
+  white-space: pre-wrap;
+}
+.confirm-actions {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
+  margin-top: 1rem;
+}
+
+/* ---- browse: sorting and filtering ---- */
+
+form.browse {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin: 0 0 1.5rem;
+}
+.browse-line { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
+.browse-line input[type="search"] { flex: 1; min-width: 12rem; }
+.browse-line select,
+.visibility select,
+.capture select,
+.sub-fields select {
+  font: inherit;
+  font-size: 0.85rem;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--fg);
+  max-width: 100%;
+}
+.browse-filters {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: 0.75rem;
+  align-items: end;
+  padding: 0.85rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
+/* ---- note extras: when and where ---- */
+
+fieldset.sub-fields {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 0.75rem 0.85rem;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+fieldset.sub-fields legend {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 0 0.35rem;
+}
+fieldset.sub-fields .note { margin: 0; }
+
+label.checkbox {
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-start;
+  font-size: 0.85rem;
+  color: var(--muted);
+  cursor: pointer;
+}
+label.checkbox input { width: auto; margin-top: 0.2rem; flex-shrink: 0; }
+
+.note-head-main .album { font-style: italic; }
+
+/* ---- refresh preview ---- */
+
+.refresh-preview {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 0.85rem;
+  margin-top: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  max-width: 40rem;
+}
+.refresh-preview .warn {
+  background: var(--warn-bg);
+  border: 1px solid var(--warn-line);
+  border-radius: 4px;
+  padding: 0.6rem 0.75rem;
+  font-size: 0.85rem;
+}
+.refresh-preview .warn p { margin: 0 0 0.5rem; }
+.refresh-preview .warn ul { margin: 0 0 0.5rem; padding-left: 1.1rem; }
+.refresh-preview .warn li { margin-bottom: 0.25rem; }
+
+/* ---- which notes travel with a shared collection ---- */
+
+.note-picker {
+  border-top: 1px solid var(--line);
+  padding-top: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+.note-picker ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.4rem; }
+.note-picker button[type="submit"] { align-self: flex-start; }
+
+/* ---- account ---- */
+
+a.download {
+  display: inline-block;
+  padding: 0.45rem 0.9rem;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  text-decoration: none;
+  font-size: 0.9rem;
+}
+a.download:hover { background: var(--line); }
+
+/* The header's one call to action. A link, not a button element, because it
+   navigates — but it should still read as the primary thing to do. */
+.site-nav a.nav-cta {
+  background: var(--fg);
+  color: var(--bg);
+  border-radius: 4px;
+  padding: 0.35rem 0.7rem;
+  font-size: 0.85rem;
+}
+.site-nav a.nav-cta:hover { text-decoration: none; opacity: 0.9; }
+
+/* Clerk renders its own <button> inside these wrappers; we style the wrapper's
+   child rather than passing a custom child, which Clerk rejects. */
+.nav-signout button {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--accent);
+  font: inherit;
+  font-size: 0.9rem;
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+  cursor: pointer;
+}
+
+/* ---- a shared note, read by someone with no account ---- */
+
+.shared-head {
+  display: flex;
+  gap: 1.5rem;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  margin-bottom: 0.5rem;
+}
+.shared-head h1 { margin-bottom: 0.35rem; }
+.shared-head p.lede { margin-bottom: 0.25rem; }
+.shared-cover {
+  width: 100%;
+  max-width: 10rem;
+  height: auto;
+  aspect-ratio: 1;
+  border-radius: 6px;
+}
+.shared .album { font-style: italic; }
+.shared .tag-list { margin-top: 1rem; }
+.shared-by { margin-top: 2rem; padding-top: 1rem; border-top: 1px solid var(--line); }
+
+@media (max-width: 34rem) {
+  .shared-cover { max-width: 7rem; }
 }

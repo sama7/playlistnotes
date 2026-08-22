@@ -65,6 +65,8 @@ export async function resolveAlbum(
       title: album.name,
       artistDisplay: album.artists.map((a) => a.name).join(", ") || null,
       releaseDate: parseReleaseDate(album.releaseDate),
+      artworkUrl: album.artwork?.url ?? null,
+      artworkThumbUrl: album.artwork?.thumbUrl ?? null,
       sourceMetadata: {
         provider,
         albumArtistIds: album.artists.map((a) => a.providerId),
@@ -117,6 +119,10 @@ export async function resolveImportableTrack(
           durationMs: track.durationMs,
         }),
         durationMs: track.durationMs,
+        // Denormalized from the album so a track row renders without a join,
+        // and so a track with no album row still has a picture.
+        artworkUrl: track.artwork?.url ?? track.album?.artwork?.url ?? null,
+        artworkThumbUrl: track.artwork?.thumbUrl ?? track.album?.artwork?.thumbUrl ?? null,
         albumId,
         releaseTitle: track.album?.name ?? null,
         releaseDate: parseReleaseDate(track.album?.releaseDate ?? null),

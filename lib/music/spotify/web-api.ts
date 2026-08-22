@@ -28,6 +28,8 @@ const PAGE_SIZE = 50;
 /** Refuse to walk a pathological playlist forever. */
 const MAX_PAGES = 20;
 
+import { fromSpotifyImages, type Artwork, type SpotifyImage } from "../artwork";
+
 export interface SpotifyArtistRef {
   id: string;
   name: string;
@@ -41,12 +43,20 @@ export interface SpotifyTrackData {
   artistDisplay: string;
   durationMs: number | null;
   isrc: string | null;
-  album: { id: string; name: string; artists: SpotifyArtistRef[]; releaseDate: string | null } | null;
+  album: {
+    id: string;
+    name: string;
+    artists: SpotifyArtistRef[];
+    releaseDate: string | null;
+    /** Optional: absent from hand-written fixtures and from some responses. */
+    artwork?: Artwork;
+  } | null;
   trackNumber: number | null;
 }
 
 export interface SpotifyCollectionData {
   id: string;
+  artwork?: Artwork;
   kind: "album" | "playlist";
   name: string;
   description: string | null;
@@ -162,7 +172,13 @@ interface RawTrack {
   duration_ms?: number;
   track_number?: number;
   external_ids?: { isrc?: string };
-  album?: { id?: string; name?: string; artists?: RawArtist[]; release_date?: string };
+  album?: {
+    id?: string;
+    name?: string;
+    artists?: RawArtist[];
+    release_date?: string;
+    images?: SpotifyImage[];
+  };
   is_local?: boolean;
 }
 
@@ -204,6 +220,7 @@ function shapeTrack(raw: RawTrack | null | undefined): SpotifyTrackData | null {
           name: raw.album.name ?? "",
           artists: shapeArtists(raw.album.artists),
           releaseDate: raw.album.release_date ?? null,
+          artwork: fromSpotifyImages(raw.album.images),
         }
       : null,
   };
@@ -244,6 +261,7 @@ export async function fetchAlbum(
     name: string;
     artists?: RawArtist[];
     release_date?: string;
+    images?: SpotifyImage[];
     tracks?: RawPage<RawTrack>;
   }>(`/albums/${encodeURIComponent(id)}`, fetchImpl);
 
@@ -253,6 +271,9 @@ export async function fetchAlbum(
     name: album.name,
     artists: albumArtists,
     releaseDate: album.release_date ?? null,
+    // Album track objects omit the album, so its art has to be grafted on the
+    // same way the rest of the album reference already is.
+    images: album.images,
   };
 
   const tracks: SpotifyTrackData[] = [];
@@ -274,6 +295,7 @@ export async function fetchAlbum(
 
   return {
     id: album.id,
+    artwork: fromSpotifyImages(album.images),
     kind: "album",
     name: album.name,
     description: null,
@@ -299,6 +321,7 @@ export async function fetchPlaylist(
     name: string;
     description?: string;
     owner?: { display_name?: string };
+    images?: SpotifyImage[];
     tracks?: RawPage<{ track?: RawTrack | null }>;
   }>(`/playlists/${encodeURIComponent(id)}`, fetchImpl);
 
@@ -323,6 +346,8 @@ export async function fetchPlaylist(
 
   return {
     id: playlist.id,
+    // A playlist has its own cover, distinct from any album inside it.
+    artwork: fromSpotifyImages(playlist.images),
     kind: "playlist",
     name: playlist.name,
     description: playlist.description?.trim() || null,

@@ -4,7 +4,8 @@ import {
   getCollection,
   getSharedCollection,
   publishCollectionUnlisted,
-  rotateCollectionShareToken,
+  setCollectionVisibility,
+  setSharedNotes,
   unpublishCollection,
 } from "@/lib/collections/service";
 import { createNote, publishNoteUnlisted } from "@/lib/notes/service";
@@ -110,7 +111,11 @@ describe("a published collection never exposes a private note", () => {
 
     expect(shared).not.toBeNull();
     expect(JSON.stringify(shared)).not.toContain(SECRET);
-    expect(JSON.stringify(shared)).not.toContain("note");
+    // The payload now HAS a notes field per track, because selected notes can
+    // travel — so the assertion is that it is empty, not that the word is
+    // absent. Nothing was ticked, so nothing goes.
+    expect(shared!.tracks.every((t) => t.notes.length === 0)).toBe(true);
+    expect(shared!.about).toBeNull();
   });
 
   it("still hides the note when the note itself was separately published", async () => {
@@ -166,17 +171,16 @@ describe("revoking access", () => {
     expect(await getSharedCollection(token)).toBeNull();
   });
 
-  it("rotating breaks the previous link immediately", async () => {
+  it("keeps the same link when an unlisted collection is made public", async () => {
     const user = await makeUser();
     const recording = await makeRecording("CN TOWER");
     const collection = await makeCollection(user.id, [recording.id]);
-    const published = await publishCollectionUnlisted(user.id, collection.id);
-    const oldToken = published.shareToken!;
+    const unlisted = await publishCollectionUnlisted(user.id, collection.id);
 
-    const rotated = await rotateCollectionShareToken(user.id, collection.id);
-    expect(rotated.shareToken).not.toBe(oldToken);
-    expect(await getSharedCollection(oldToken)).toBeNull();
-    expect(await getSharedCollection(rotated.shareToken!)).not.toBeNull();
+    const madePublic = await setCollectionVisibility(user.id, collection.id, Visibility.public);
+
+    expect(madePublic.shareToken).toBe(unlisted.shareToken);
+    expect(await getSharedCollection(madePublic.shareToken!)).not.toBeNull();
   });
 
   it("re-publishing after un-publishing does not resurrect the old token", async () => {
@@ -206,14 +210,16 @@ describe("cross-user denial, with valid identifiers", () => {
     expect(after!.shareToken).toBeNull();
   });
 
-  it("refuses to un-publish or rotate another user's collection", async () => {
+  it("refuses to un-publish or re-share another user's collection", async () => {
     const [alice, bob] = await Promise.all([makeUser(), makeUser()]);
     const recording = await makeRecording("CN TOWER");
     const collection = await makeCollection(alice.id, [recording.id]);
     const published = await publishCollectionUnlisted(alice.id, collection.id);
 
     await expect(unpublishCollection(bob.id, collection.id)).rejects.toThrow();
-    await expect(rotateCollectionShareToken(bob.id, collection.id)).rejects.toThrow();
+    await expect(
+      setCollectionVisibility(bob.id, collection.id, Visibility.public),
+    ).rejects.toThrow();
 
     // Alice's link still works — Bob changed nothing.
     expect(await getSharedCollection(published.shareToken!)).not.toBeNull();
@@ -221,5 +227,113 @@ describe("cross-user denial, with valid identifiers", () => {
 
   it("returns nothing for a well-formed token that belongs to no collection", async () => {
     expect(await getSharedCollection("Zm9vYmFyYmF6cXV4MDAwMDAwMDAwMDAw")).toBeNull();
+  });
+});
+
+/**
+ * Selective sharing: the owner picks which notes travel with a collection.
+ *
+ * This is the invariant in its new form. It used to be guaranteed by the shared
+ * view being structurally incapable of returning a note; now notes can travel,
+ * so the guarantee has to be tested rather than asserted by construction. Three
+ * things must hold, and all three are failures a user would experience as a
+ * betrayal:
+ *
+ *   - nothing travels unless it was explicitly ticked;
+ *   - un-ticking actually withdraws it;
+ *   - taking the collection private withdraws everything.
+ */
+describe("choosing which notes travel with a shared collection", () => {
+  async function scenario() {
+    const user = await makeUser();
+    const [a, b] = await Promise.all([makeRecording("CN TOWER"), makeRecording("Nokia")]);
+    const collection = await makeCollection(user.id, [a.id, b.id]);
+
+    const kept = await createNote(user.id, {
+      recordingId: a.id,
+      collectionItemId: collection.items[0]!.id,
+      body: "the one I am happy to show",
+    });
+    const secret = await createNote(user.id, {
+      recordingId: b.id,
+      collectionItemId: collection.items[1]!.id,
+      body: "the one that stays mine",
+    });
+
+    const published = await publishCollectionUnlisted(user.id, collection.id);
+    return { user, collection, kept, secret, token: published.shareToken! };
+  }
+
+  it("carries only the ticked note, and publishes it", async () => {
+    const { user, collection, kept, secret, token } = await scenario();
+
+    await setSharedNotes(user.id, collection.id, [kept.id]);
+    const shared = await getSharedCollection(token);
+
+    expect(shared!.tracks[0]!.notes).toEqual(["the one I am happy to show"]);
+    expect(shared!.tracks[1]!.notes).toEqual([]);
+    expect(JSON.stringify(shared)).not.toContain("the one that stays mine");
+
+    // A note on a public page cannot still claim to be private in the owner's
+    // own list — that would be a lie in one place or the other.
+    const after = await prisma.note.findUniqueOrThrow({ where: { id: kept.id } });
+    expect(after.visibility).toBe(Visibility.unlisted);
+    expect(
+      (await prisma.note.findUniqueOrThrow({ where: { id: secret.id } })).visibility,
+    ).toBe(Visibility.private);
+  });
+
+  it("withdraws a note when it is un-ticked", async () => {
+    const { user, collection, kept, token } = await scenario();
+
+    await setSharedNotes(user.id, collection.id, [kept.id]);
+    await setSharedNotes(user.id, collection.id, []);
+
+    expect((await getSharedCollection(token))!.tracks[0]!.notes).toEqual([]);
+  });
+
+  it("withdraws every note when the collection goes private", async () => {
+    const { user, collection, kept, token } = await scenario();
+    await setSharedNotes(user.id, collection.id, [kept.id]);
+
+    await unpublishCollection(user.id, collection.id);
+
+    expect(await getSharedCollection(token)).toBeNull();
+    expect(
+      (await prisma.note.findUniqueOrThrow({ where: { id: kept.id } })).sharedInCollection,
+    ).toBe(false);
+  });
+
+  it("refuses to tick a note in another user's collection", async () => {
+    const [alice, bob] = await Promise.all([makeUser(), makeUser()]);
+    const recording = await makeRecording("CN TOWER");
+    const collection = await makeCollection(alice.id, [recording.id]);
+    const note = await createNote(alice.id, {
+      recordingId: recording.id,
+      collectionItemId: collection.items[0]!.id,
+      body: "alice wrote this",
+    });
+
+    await expect(setSharedNotes(bob.id, collection.id, [note.id])).rejects.toThrow();
+    expect(
+      (await prisma.note.findUniqueOrThrow({ where: { id: note.id } })).sharedInCollection,
+    ).toBe(false);
+  });
+
+  it("ignores a note id from outside the collection", async () => {
+    const { user, collection, token } = await scenario();
+    const other = await makeRecording("Elsewhere");
+    const unrelated = await createNote(user.id, {
+      recordingId: other.id,
+      body: "not part of this collection at all",
+    });
+
+    await setSharedNotes(user.id, collection.id, [unrelated.id]);
+
+    const shared = await getSharedCollection(token);
+    expect(JSON.stringify(shared)).not.toContain("not part of this collection at all");
+    expect(
+      (await prisma.note.findUniqueOrThrow({ where: { id: unrelated.id } })).sharedInCollection,
+    ).toBe(false);
   });
 });

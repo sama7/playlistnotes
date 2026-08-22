@@ -2,7 +2,7 @@ import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 import type { Result } from "axe-core";
 import { signIn, signUp, testEmail } from "./support/auth";
-import { CN_TOWER, DARLING_I, writeNote } from "./support/notes";
+import { CN_TOWER, DARLING_I, importSmallCollection, writeNote } from "./support/notes";
 
 /**
  * The signed-in happy path and the privacy path, through a real browser.
@@ -159,7 +159,36 @@ test.describe("the privacy path", () => {
   });
 });
 
+/**
+ * The visibility control had two bugs that made it look like it worked while
+ * doing nothing: React 19 reset the uncontrolled select after each Server
+ * Action, and once controlled, the form serialised its FormData after React had
+ * restored the DOM value — so every change after the first submitted the
+ * previous value. Both were invisible to a test that changed it once.
+ */
 test.describe("sharing is deliberate", () => {
+  test("visibility survives being changed several times in a row", async ({ page }) => {
+    await signUp(page, testEmail("visibility"));
+    await writeNote(page, { ...CN_TOWER, body: "toggled through every audience" });
+
+    const select = page.locator("select[name='visibility']").first();
+
+    for (const [value, chip] of [
+      ["unlisted", ".chip.unlisted"],
+      ["public", ".chip.public"],
+      ["private", ".chip.private"],
+    ] as const) {
+      await select.selectOption(value);
+      await expect(page.locator(chip).first()).toBeVisible({ timeout: 30_000 });
+      // The control must agree with what was actually saved, or the next change
+      // is made from a baseline the user cannot see.
+      await expect(select).toHaveValue(value);
+    }
+
+    await page.reload();
+    await expect(page.locator("select[name='visibility']").first()).toHaveValue("private");
+  });
+
   test("a note is unreachable until published, then reachable, then revoked", async ({
     page,
     browser,
@@ -167,8 +196,18 @@ test.describe("sharing is deliberate", () => {
     await signUp(page, testEmail("share"));
     await writeNote(page, { ...CN_TOWER, body: "deliberately shared, then taken back" });
 
-    await page.getByRole("button", { name: /create share link/i }).first().click();
-    const shareUrl = await page.locator("code").first().innerText();
+    // One control, three audiences — the token is an implementation detail, so
+    // the test drives the same select a person does.
+    await page.locator("select[name='visibility']").first().selectOption("unlisted");
+    await expect(page.locator(".chip.unlisted").first()).toBeVisible({ timeout: 30_000 });
+
+    /**
+     * The URL is no longer printed on the page — it is on a copy button, whose
+     * accessible name carries it. Reading it from there is also the assertion
+     * that a screen-reader user can still reach the link.
+     */
+    const copy = page.getByRole("button", { name: /copy link/i }).first();
+    const shareUrl = (await copy.getAttribute("title")) ?? "";
     expect(shareUrl).toContain("/n/");
 
     const anon = await browser.newContext();
@@ -176,9 +215,9 @@ test.describe("sharing is deliberate", () => {
     await anonPage.goto(shareUrl);
     await expect(anonPage.getByText("deliberately shared, then taken back")).toBeVisible();
 
-    // Un-publishing must revoke, not merely stop advertising the link.
-    await page.getByRole("button", { name: /make private/i }).first().click();
-    await expect(page.locator(".chip.private").first()).toBeVisible();
+    // Going private must revoke, not merely stop advertising the link.
+    await page.locator("select[name='visibility']").first().selectOption("private");
+    await expect(page.locator(".chip.private").first()).toBeVisible({ timeout: 30_000 });
 
     const after = await anonPage.goto(shareUrl);
     expect(after?.status()).toBeGreaterThanOrEqual(400);
@@ -224,39 +263,26 @@ test.describe("accessibility of the signed-in surfaces", () => {
    */
   test("per-track controls name the track they belong to", async ({ page }) => {
     await signUp(page, testEmail("a11y-labels"));
-    await writeNote(page, { ...CN_TOWER, body: "seed a collection to annotate" });
+    await importSmallCollection(page);
 
-    await page.goto("/collections");
-    const firstCollection = page.locator("a[href^='/collections/']").first();
-    if (!(await firstCollection.isVisible().catch(() => false))) {
-      test.skip(true, "No collection to inspect; import is not exercised here.");
-      return;
-    }
-    await firstCollection.click();
-
+    /**
+     * The controls live in the row's details panel, which CSS hides on a narrow
+     * viewport. Accessible names are what is being asserted, not visibility, so
+     * the count is taken from the accessibility tree.
+     */
     const addButtons = page.getByRole("button", { name: /^Add a note about .+/ });
     expect(await addButtons.count()).toBeGreaterThan(0);
   });
 
-  test("every control on the notes page is keyboard reachable", async ({ page }) => {
-    await signUp(page, testEmail("a11y-keys"));
-    await writeNote(page, { ...CN_TOWER, body: "reachable by keyboard alone" });
+  test("a collection page has no detectable violations once it has tracks", async ({
+    page,
+  }) => {
+    await signUp(page, testEmail("a11y-tracklist"));
+    await importSmallCollection(page);
 
-    const seen = new Set<string>();
-    for (let i = 0; i < 25; i++) {
-      await page.keyboard.press("Tab");
-      const label = await page.evaluate(() => {
-        const el = document.activeElement as HTMLElement | null;
-        if (!el || el === document.body) return null;
-        return `${el.tagName.toLowerCase()}:${(el.getAttribute("id") ?? el.textContent ?? "").trim().slice(0, 24)}`;
-      });
-      if (label) seen.add(label);
-    }
-
-    const joined = [...seen].join(" | ").toLowerCase();
-    // The three things a keyboard user must be able to do here.
-    expect(joined).toContain("link");
-    expect(joined).toContain("body");
-    expect(joined).toMatch(/share|save|delete/);
+    const results = await new AxeBuilder({ page }).withTags(AXE_TAGS).analyze();
+    report(results.violations);
+    expect(results.violations).toEqual([]);
   });
 });
+

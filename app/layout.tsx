@@ -1,5 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { ClerkProvider } from "@clerk/nextjs";
+import { SiteNav } from "@/components/site-nav";
+import { SiteFooter } from "@/components/site-footer";
 import "./globals.css";
 
 /**
@@ -68,7 +70,20 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <ClerkProvider>
+    /**
+     * Signing in lands on the notes page, not on the account page.
+     *
+     * The redirect used to come from `NEXT_PUBLIC_CLERK_*_FALLBACK_REDIRECT_URL`
+     * in the environment, pointing at `/account` — so the first thing a new user
+     * saw after signing up was a settings screen, which says nothing about what
+     * the product is for. Setting it here also removes one more `NEXT_PUBLIC_`
+     * value that has to match between the build and the runtime; those have
+     * already taken production down once.
+     */
+    <ClerkProvider
+      signInFallbackRedirectUrl="/notes"
+      signUpFallbackRedirectUrl="/notes"
+    >
       <html lang="en">
         <body>
           {/*
@@ -79,7 +94,9 @@ export default function RootLayout({
           <a href="#content" className="skip-link">
             Skip to content
           </a>
+          <SiteNav />
           <div id="content">{children}</div>
+          <SiteFooter />
         </body>
       </html>
     </ClerkProvider>

@@ -22,6 +22,7 @@ import {
 /** Routes anyone may reach without signing in. */
 const isPublicRoute = createRouteMatcher([
   "/",
+  "/about",
   "/sign-in(.*)",
   "/sign-up(.*)",
   "/api/health",

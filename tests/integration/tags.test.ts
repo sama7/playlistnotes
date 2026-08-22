@@ -1,7 +1,15 @@
 import { PrismaClient, Provider, RecordingOrigin } from "@prisma/client";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { createNote } from "@/lib/notes/service";
-import { listTags, normalizeTagName, notesByTag, parseTagInput, setNoteTags } from "@/lib/notes/tags";
+import {
+  deleteTag,
+  listTags,
+  normalizeTagName,
+  notesByTag,
+  parseTagInput,
+  renameTag,
+  setNoteTags,
+} from "@/lib/notes/tags";
 import { resetDatabase } from "./reset";
 
 const prisma = new PrismaClient();
@@ -163,5 +171,93 @@ describe("tags are private to their owner", () => {
 
     expect(await listTags(alice.id)).toHaveLength(0);
     expect(await listTags(bob.id)).toHaveLength(1);
+  });
+});
+
+/**
+ * Renaming and deleting a tag.
+ *
+ * Tags previously had no management at all: a typo lived forever, and merging
+ * "late night" into "late-night" meant editing every note by hand. The two
+ * properties worth proving are that a rename onto an existing name **merges**
+ * rather than failing, and that deleting a label never deletes the writing it
+ * was attached to.
+ */
+describe("renaming a tag", () => {
+  it("moves every note to the new name", async () => {
+    const user = await makeUser();
+    const [a, b] = await Promise.all([makeNote(user.id, "CN TOWER"), makeNote(user.id, "Nokia")]);
+    await setNoteTags(user.id, a.id, ["demos"]);
+    await setNoteTags(user.id, b.id, ["demos"]);
+
+    expect(await renameTag(user.id, "demos", "unreleased")).toBe("unreleased");
+
+    expect(await listTags(user.id)).toEqual([{ name: "unreleased", count: 2 }]);
+    expect((await notesByTag(user.id, "unreleased")).map((n) => n.id).sort()).toEqual(
+      [a.id, b.id].sort(),
+    );
+  });
+
+  it("merges when the new name already exists, keeping both sets of notes", async () => {
+    const user = await makeUser();
+    const [a, b, both] = await Promise.all([
+      makeNote(user.id, "One"),
+      makeNote(user.id, "Two"),
+      makeNote(user.id, "Three"),
+    ]);
+    await setNoteTags(user.id, a.id, ["late night"]);
+    await setNoteTags(user.id, b.id, ["latenight"]);
+    // Carries both, which is what would break a naive merge on the composite key.
+    await setNoteTags(user.id, both.id, ["late night", "latenight"]);
+
+    expect(await renameTag(user.id, "late night", "latenight")).toBe("latenight");
+
+    expect(await listTags(user.id)).toEqual([{ name: "latenight", count: 3 }]);
+  });
+
+  it("normalises the requested name rather than storing it raw", async () => {
+    const user = await makeUser();
+    const note = await makeNote(user.id);
+    await setNoteTags(user.id, note.id, ["demos"]);
+
+    expect(await renameTag(user.id, "demos", "  Late   Night ")).toBe("late night");
+    expect(await listTags(user.id)).toEqual([{ name: "late night", count: 1 }]);
+  });
+
+  it("cannot touch another user's identically named tag", async () => {
+    const [alice, bob] = await Promise.all([makeUser(), makeUser()]);
+    const [hers, his] = await Promise.all([makeNote(alice.id), makeNote(bob.id)]);
+    await setNoteTags(alice.id, hers.id, ["demos"]);
+    await setNoteTags(bob.id, his.id, ["demos"]);
+
+    await renameTag(alice.id, "demos", "unreleased");
+
+    expect(await listTags(alice.id)).toEqual([{ name: "unreleased", count: 1 }]);
+    expect(await listTags(bob.id)).toEqual([{ name: "demos", count: 1 }]);
+  });
+});
+
+describe("deleting a tag", () => {
+  it("removes the label and keeps the notes", async () => {
+    const user = await makeUser();
+    const note = await makeNote(user.id);
+    await setNoteTags(user.id, note.id, ["demos", "keep"]);
+
+    await deleteTag(user.id, "demos");
+
+    expect(await listTags(user.id)).toEqual([{ name: "keep", count: 1 }]);
+    expect(await prisma.note.findUnique({ where: { id: note.id } })).not.toBeNull();
+  });
+
+  it("cannot delete another user's identically named tag", async () => {
+    const [alice, bob] = await Promise.all([makeUser(), makeUser()]);
+    const [hers, his] = await Promise.all([makeNote(alice.id), makeNote(bob.id)]);
+    await setNoteTags(alice.id, hers.id, ["demos"]);
+    await setNoteTags(bob.id, his.id, ["demos"]);
+
+    await deleteTag(alice.id, "demos");
+
+    expect(await listTags(alice.id)).toEqual([]);
+    expect(await listTags(bob.id)).toEqual([{ name: "demos", count: 1 }]);
   });
 });

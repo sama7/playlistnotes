@@ -2,7 +2,12 @@
 
 import { revalidatePath } from "next/cache";
 import { requireUser } from "@/lib/auth";
-import { MAX_CSV_BYTES, importFromCsv } from "@/lib/music/import-from-csv";
+import {
+  MAX_CSV_BYTES,
+  importCsvIntoCollection,
+  importFromCsv,
+} from "@/lib/music/import-from-csv";
+import type { ReconcileMode } from "@/lib/collections/reconcile";
 
 /**
  * Uploading a CSV export as a collection.
@@ -17,6 +22,17 @@ export interface CsvImportState {
   error?: string;
   /** Set when the same bytes were imported before; the user chooses. */
   duplicate?: { collectionId: string | null; importedAt: string };
+  /** Set when importing INTO a collection: what would change, before it does. */
+  preview?: {
+    collectionId: string;
+    name: string;
+    mode: ReconcileMode;
+    added: number;
+    removed: number;
+    moved: number;
+    total: number;
+    orphaning: Array<{ id: string; body: string; trackTitle: string }>;
+  };
   imported?: {
     collectionId: string;
     name: string;
@@ -39,6 +55,16 @@ export async function importCsvAction(
   const name = String(formData.get("name") ?? "").trim();
   const confirmDuplicate = formData.get("confirmDuplicate") === "yes";
 
+  /**
+   * Where the rows go. An empty target means "a new collection", which is the
+   * behaviour this form has always had and the right default for a first
+   * import. Choosing an existing collection turns this into the same operation
+   * as a refresh, and takes the same two steps: preview, then confirm.
+   */
+  const targetId = String(formData.get("targetCollectionId") ?? "").trim();
+  const mode: ReconcileMode = formData.get("mode") === "append" ? "append" : "replace";
+  const applyToTarget = formData.get("confirmTarget") === "yes";
+
   if (!(file instanceof File) || file.size === 0) {
     return { error: "Choose a CSV file to import." };
   }
@@ -49,6 +75,44 @@ export async function importCsvAction(
   }
 
   const text = await file.text();
+
+  if (targetId) {
+    const into = await importCsvIntoCollection(user.id, targetId, text, mode, {
+      filename: file.name,
+      name,
+      apply: applyToTarget,
+    });
+
+    if (!into.ok) return { error: into.message };
+
+    if (!into.applied) {
+      return {
+        preview: {
+          collectionId: into.preview.collectionId,
+          name: into.preview.name,
+          mode,
+          added: into.preview.added,
+          removed: into.preview.removed,
+          moved: into.preview.moved,
+          total: into.preview.total,
+          orphaning: into.preview.orphaning,
+        },
+      };
+    }
+
+    revalidatePath(`/collections/${into.preview.collectionId}`);
+    revalidatePath("/notes");
+    return {
+      imported: {
+        collectionId: into.preview.collectionId,
+        name: into.preview.name,
+        count: into.preview.total,
+        created: into.preview.added,
+        matched: into.preview.unchanged + into.preview.moved,
+        skipped: into.skipped.length,
+      },
+    };
+  }
 
   const result = await importFromCsv(user.id, text, {
     filename: file.name,
@@ -73,6 +137,7 @@ export async function importCsvAction(
   }
 
   revalidatePath("/collections");
+
   return {
     imported: {
       collectionId: result.summary.collectionId,

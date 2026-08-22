@@ -1,4 +1,5 @@
 import { Provider } from "@prisma/client";
+import { type Artwork } from "./artwork";
 import type { SpotifyCollectionData } from "./spotify/web-api";
 import type { AppleCollectionData, AppleTrackData } from "./apple/itunes";
 
@@ -33,11 +34,14 @@ export interface ImportableTrack {
   durationMs: number | null;
   isrc: string | null;
   trackNumber: number | null;
+  /** Cover art as links, never bytes. See lib/music/artwork.ts. */
+  artwork?: Artwork;
   album: {
     providerId: string;
     name: string;
     artists: ImportableArtist[];
     releaseDate: string | null;
+    artwork?: Artwork;
   } | null;
 }
 
@@ -48,6 +52,7 @@ export interface ImportableCollection {
   name: string;
   description: string | null;
   sourceUrl: string;
+  artwork?: Artwork;
   tracks: ImportableTrack[];
   truncated: boolean;
 }
@@ -60,6 +65,7 @@ export function fromSpotifyCollection(data: SpotifyCollectionData): ImportableCo
     name: data.name,
     description: data.description,
     sourceUrl: `https://open.spotify.com/${data.kind}/${data.id}`,
+    artwork: data.artwork,
     truncated: data.truncated,
     tracks: data.tracks.map((t) => ({
       providerId: t.id,
@@ -69,12 +75,14 @@ export function fromSpotifyCollection(data: SpotifyCollectionData): ImportableCo
       durationMs: t.durationMs,
       isrc: t.isrc,
       trackNumber: t.trackNumber,
+      artwork: t.album?.artwork,
       album: t.album
         ? {
             providerId: t.album.id,
             name: t.album.name,
             artists: t.album.artists.map((a) => ({ providerId: a.id, name: a.name })),
             releaseDate: t.album.releaseDate,
+            artwork: t.album.artwork,
           }
         : null,
     })),
@@ -92,6 +100,7 @@ function appleTrack(t: AppleTrackData): ImportableTrack {
     durationMs: t.durationMs,
     isrc: null,
     trackNumber: t.trackNumber,
+    artwork: t.artwork,
     album:
       t.albumId && t.albumName
         ? {
@@ -99,6 +108,7 @@ function appleTrack(t: AppleTrackData): ImportableTrack {
             name: t.albumName,
             artists: t.artistId ? [{ providerId: t.artistId, name: t.artistName }] : [],
             releaseDate: t.releaseDate,
+            artwork: t.artwork,
           }
         : null,
   };
@@ -119,6 +129,7 @@ export function fromAppleCollection(
         ? `https://music.apple.com/album/${data.id}`
         : `https://music.apple.com/playlist/${data.id}`,
     truncated: false,
+    artwork: data.artwork,
     tracks: data.tracks.map(appleTrack),
   };
 }

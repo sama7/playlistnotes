@@ -133,8 +133,36 @@ async function captureSpotifyTrack(
       break;
   }
 
+  return captureSpotifyTrackById(ref.id, ref.canonicalUrl, options);
+}
+
+/**
+ * Capture by identifier rather than by link.
+ *
+ * The two-step capture form resolves a link to a provider ID first (see
+ * `previewLink`) and only writes when the user confirms, so by the time it saves
+ * it has an ID and no longer has a parsed ref. Routing that through here rather
+ * than through a second copy of the mapping keeps one definition of what a
+ * provider-anchored recording looks like — the same reason `resolveImportableTrack`
+ * was extracted in the first place.
+ */
+export async function captureFromProviderRef(
+  provider: Provider,
+  providerId: string,
+  options: CaptureOptions = {},
+): Promise<CaptureOutcome> {
+  return provider === Provider.apple_music
+    ? captureAppleTrackById(providerId, options)
+    : captureSpotifyTrackById(providerId, undefined, options);
+}
+
+async function captureSpotifyTrackById(
+  id: string,
+  canonicalUrl: string | undefined,
+  options: CaptureOptions,
+): Promise<CaptureOutcome> {
   // DATABASE FIRST — see the header. Do not move this below a network call.
-  const known = await findByProviderId(Provider.spotify, ref.id);
+  const known = await findByProviderId(Provider.spotify, id);
   if (known) return { ok: true, recording: known, source: "database", linked: true };
 
   /**
@@ -151,8 +179,8 @@ async function captureSpotifyTrack(
     try {
       // Returns null rather than throwing on an unavailable track or a failed
       // request, so a null here is a reason to degrade, not to fail.
-      const track = await (options.fetchTrackImpl ?? fetchTrack)(ref.id);
-      if (!track) return degradedSpotifyCapture(ref.id, ref.canonicalUrl, options);
+      const track = await (options.fetchTrackImpl ?? fetchTrack)(id);
+      if (!track) return degradedSpotifyCapture(id, canonicalUrl, options);
 
       const recording = await persist(Provider.spotify, {
         providerId: track.id,
@@ -162,12 +190,14 @@ async function captureSpotifyTrack(
         durationMs: track.durationMs,
         isrc: track.isrc,
         trackNumber: track.trackNumber,
+        artwork: track.album?.artwork,
         album: track.album
           ? {
               providerId: track.album.id,
               name: track.album.name,
               artists: track.album.artists.map((a) => ({ providerId: a.id, name: a.name })),
               releaseDate: track.album.releaseDate,
+              artwork: track.album.artwork,
             }
           : null,
       });
@@ -183,7 +213,7 @@ async function captureSpotifyTrack(
     }
   }
 
-  return degradedSpotifyCapture(ref.id, ref.canonicalUrl, options);
+  return degradedSpotifyCapture(id, canonicalUrl, options);
 }
 
 /**
@@ -252,7 +282,14 @@ async function captureAppleTrack(
     };
   }
 
-  const known = await findByProviderId(Provider.apple_music, ref.id);
+  return captureAppleTrackById(ref.id, options);
+}
+
+async function captureAppleTrackById(
+  id: string,
+  options: CaptureOptions,
+): Promise<CaptureOutcome> {
+  const known = await findByProviderId(Provider.apple_music, id);
   if (known) return { ok: true, recording: known, source: "database", linked: true };
 
   try {
@@ -263,7 +300,7 @@ async function captureAppleTrack(
      * a single entry where Spotify would hold two. That is a real difference in
      * what Apple hands us, not something to paper over by splitting the string.
      */
-    const track = await (options.fetchAppleTrackImpl ?? fetchAppleTrack)(ref.id);
+    const track = await (options.fetchAppleTrackImpl ?? fetchAppleTrack)(id);
     if (!track) {
       return {
         ok: false,
@@ -279,6 +316,7 @@ async function captureAppleTrack(
       durationMs: track.durationMs,
       isrc: null,
       trackNumber: track.trackNumber,
+      artwork: track.artwork,
       album:
         track.albumId && track.albumName
           ? {
@@ -288,6 +326,7 @@ async function captureAppleTrack(
                 ? [{ providerId: track.artistId, name: track.artistName }]
                 : [],
               releaseDate: track.releaseDate,
+              artwork: track.artwork,
             }
           : null,
     });

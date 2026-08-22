@@ -35,6 +35,30 @@ enum Visibility {
   public
 }
 
+/// How precisely a note's "experienced at" date is known.
+///
+/// People remember listening at very different resolutions — "the 14th of
+/// August", "sometime that March", "back in 2011" — and storing all three as a
+/// timestamp would silently invent a precision the writer never claimed. The
+/// date column holds the earliest instant in the stated range; this says how
+/// much of it to believe and therefore how to render it.
+enum DatePrecision {
+  day
+  month
+  year
+}
+
+/// How precisely a note's place is recorded.
+///
+/// `area` is the default and is deliberately coarse — a town, a venue, a
+/// neighbourhood — because a private journal that quietly builds a precise
+/// movement history is a liability, not a feature. `exact` exists only when the
+/// writer opts into it.
+enum PlacePrecision {
+  area
+  exact
+}
+
 /// Whether a recording is anchored to an external provider or was typed by a
 /// user. See AGENTS.md §3a.5: `user` recordings are creator-scoped, stay out of
 /// global resolution candidates, and never reach a shared public surface until
@@ -188,8 +212,17 @@ model Album {
   artistDisplay String? @map("artist_display")
 
   releaseDate DateTime? @map("release_date") @db.Date
-  /// Linked, never rehosted.
-  artworkUrl  String?   @map("artwork_url")
+
+  /// Cover art is **linked, never rehosted** — we store provider URLs, not
+  /// bytes. Rehosting would mean copyright exposure, storage that grows with
+  /// the catalog rather than with usage, and a cache to invalidate. The cost is
+  /// link rot, which degrades to a missing image rather than a broken page.
+  ///
+  /// Two sizes because the product needs both: full size on a collection or
+  /// track page, and a 64px thumbnail per row in a fifty-track list where
+  /// downloading fifty 640px images would be absurd.
+  artworkUrl      String? @map("artwork_url")
+  artworkThumbUrl String? @map("artwork_thumb_url")
 
   sourceMetadata Json @default("{}") @map("source_metadata")
 
@@ -268,12 +301,17 @@ model Recording {
   /// is a query rather than a bulk re-normalization. Nothing reads it yet.
   normalizedKey String @map("normalized_key")
 
-  durationMs   Int?      @map("duration_ms")
+  durationMs Int? @map("duration_ms")
+
+  /// Usually the album's art, denormalized so a track row renders without a
+  /// join — and populated directly for a track with no album row at all.
+  artworkUrl      String? @map("artwork_url")
+  artworkThumbUrl String? @map("artwork_thumb_url")
+
   albumId      String?   @map("album_id") @db.Uuid
   /// Denormalized album display, always available even without an Album row.
   releaseTitle String?   @map("release_title")
   releaseDate  DateTime? @map("release_date") @db.Date
-  artworkUrl   String?   @map("artwork_url")
 
   /// Permits conservative deduplication later while retaining redirects from
   /// old public IDs. Resolution must never RETURN a row with this set — follow
@@ -366,7 +404,12 @@ model Note {
   id      String @id @default(uuid()) @db.Uuid
   ownerId String @map("owner_id") @db.Uuid
 
-  recordingId String @map("recording_id") @db.Uuid
+  /// A note is about EXACTLY ONE of a recording or a collection, enforced by a
+  /// database CHECK rather than by convention. §3a called this the honest form
+  /// of collection-level journaling and deferred it; making both nullable
+  /// without the constraint would have allowed a note attached to nothing.
+  recordingId  String? @map("recording_id") @db.Uuid
+  collectionId String? @map("collection_id") @db.Uuid
 
   /// Optional playlist context: "this track, in this collection". Preserves v1's
   /// meaning without using a Spotify playlist ID as an ownership boundary. The
@@ -387,23 +430,46 @@ model Note {
   displayTitle  String? @map("display_title")
   displayArtist String? @map("display_artist")
 
-  /// Random and rotatable, so a leaked unlisted link can be revoked without
-  /// destroying the note. The internal UUID is never the share URL.
+  /// Random, and cleared when the note goes private — so a leaked link is
+  /// revoked without destroying the note, and sharing again mints a new one.
+  /// The internal UUID is never the share URL.
   shareToken String? @unique @map("share_token")
 
   visibility  Visibility @default(private)
   publishedAt DateTime?  @map("published_at") @db.Timestamptz(6)
 
+  /// Whether this note travels with its collection when the collection is
+  /// shared. Defaults to FALSE and is set only by an explicit per-note choice,
+  /// so the invariant survives: publishing a collection never publishes the
+  /// notes inside it — it publishes the notes you ticked.
+  sharedInCollection Boolean @default(false) @map("shared_in_collection")
+
+  /// WHEN the listening happened, as distinct from when the note was written.
+  /// A journal entry about a gig in 2011 is dated 2011, not today.
+  experiencedAt        DateTime?      @map("experienced_at") @db.Timestamptz(6)
+  experiencedPrecision DatePrecision? @map("experienced_precision")
+
+  /// WHERE it happened. Coarse by default; see PlacePrecision.
+  placeLabel     String?         @map("place_label")
+  placePrecision PlacePrecision? @map("place_precision")
+  placeLat       Decimal?        @map("place_lat") @db.Decimal(9, 6)
+  placeLon       Decimal?        @map("place_lon") @db.Decimal(9, 6)
+
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  /// Touched by edits to the note's own content — its body, its tags, its date
+  /// or its place. Deliberately NOT touched by a visibility change: "edited"
+  /// must mean the writing changed, or the timestamp stops meaning anything.
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
+  collection     Collection?     @relation(fields: [collectionId], references: [id], onDelete: Cascade)
   owner          User            @relation(fields: [ownerId], references: [id], onDelete: Cascade)
-  recording      Recording       @relation(fields: [recordingId], references: [id], onDelete: Restrict)
+  recording      Recording?      @relation(fields: [recordingId], references: [id], onDelete: Restrict)
   collectionItem CollectionItem? @relation(fields: [collectionItemId], references: [id], onDelete: SetNull)
   tags           NoteTag[]
 
   @@index([ownerId, updatedAt(sort: Desc)])
   @@index([recordingId])
+  @@index([collectionId])
   @@index([collectionItemId])
   @@index([visibility, publishedAt(sort: Desc)])
   @@map("notes")
@@ -423,6 +489,10 @@ model Collection {
   visibility Visibility @default(private)
   shareToken String?    @unique @map("share_token")
 
+  /// The playlist's own image, or the album's cover. Linked, never rehosted.
+  artworkUrl      String? @map("artwork_url")
+  artworkThumbUrl String? @map("artwork_thumb_url")
+
   /// Provenance only. A pasted playlist link attaches these fields to a
   /// collection the user is deliberately creating; it NEVER creates a
   /// collection or a collection item on its own (AGENTS.md §4.4).
@@ -431,9 +501,14 @@ model Collection {
   sourceUrl        String?   @map("source_url")
   sourceSnapshotAt DateTime? @map("source_snapshot_at") @db.Timestamptz(6)
 
-  /// Which import produced this snapshot. Snapshots are immutable; a re-import
-  /// creates a NEW collection rather than mutating this one.
+  /// Which import last populated this collection.
   importId String? @map("import_id") @db.Uuid
+
+  /// When the tracklist was last re-read from its source, and how many times.
+  /// A collection is no longer frozen at import — see `refreshCollection` — so
+  /// these record that history rather than pretending it did not happen.
+  refreshedAt  DateTime? @map("refreshed_at") @db.Timestamptz(6)
+  refreshCount Int       @default(0) @map("refresh_count")
 
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
@@ -441,6 +516,7 @@ model Collection {
   owner  User             @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   import Import?          @relation(fields: [importId], references: [id], onDelete: SetNull)
   items  CollectionItem[]
+  notes  Note[]
 
   @@index([ownerId, updatedAt(sort: Desc)])
   @@index([importId])
@@ -461,6 +537,13 @@ model CollectionItem {
 
   position Int
 
+  /// Which appearance of this recording this is, counting from 0 in position
+  /// order. A playlist can hold the same song three times and a note on the
+  /// second one means something specific; this is what lets a refresh re-anchor
+  /// that note to the second appearance again even if the order changed around
+  /// it. Position alone cannot do it, and recording id alone is ambiguous.
+  occurrence Int @default(0)
+
   /// Retains the raw source row, including the unsplit `Artist URI(s)` and
   /// `Album Artist URI(s)` lists, so later structural backfills need no string
   /// parsing.
@@ -472,6 +555,7 @@ model CollectionItem {
 
   @@unique([collectionId, position])
   @@index([collectionId, position])
+  @@index([collectionId, recordingId, occurrence])
   @@index([recordingId])
   @@map("collection_items")
 }

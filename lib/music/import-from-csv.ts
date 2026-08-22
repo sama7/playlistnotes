@@ -8,6 +8,8 @@ import {
   type CsvRowError,
 } from "@/lib/music/csv/exportify";
 import { CsvTooLargeError } from "@/lib/music/csv/parse-csv";
+import { applyCsvToCollection, type RefreshPreview } from "@/lib/collections/refresh";
+import type { ReconcileMode } from "@/lib/collections/reconcile";
 
 /**
  * Importing a collection from a CSV the user exported themselves.
@@ -126,3 +128,71 @@ function defaultName(filename?: string | null): string {
   const base = filename.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ").trim();
   return base || "Imported collection";
 }
+
+/**
+ * Import a CSV **into an existing collection**, rather than creating a new one.
+ *
+ * A separate entry point rather than a flag on `importFromCsv`, because the
+ * outcomes genuinely differ: creating a collection reports what was written,
+ * while changing one has to report what *would* change and wait to be told to
+ * go ahead. Folding both into one return type made every existing caller narrow
+ * a union to reach a field that is always there for them.
+ *
+ * Duplicate-content detection is deliberately not applied here. It exists to
+ * stop someone accidentally making a second snapshot of the same file, and
+ * re-importing the same export into the same collection is a no-op refresh —
+ * exactly the thing a person does on purpose.
+ */
+export async function importCsvIntoCollection(
+  ownerId: string,
+  collectionId: string,
+  text: string,
+  mode: ReconcileMode,
+  options: { filename?: string | null; name?: string; apply: boolean },
+): Promise<CsvIntoCollectionOutcome> {
+  if (Buffer.byteLength(text, "utf8") > MAX_CSV_BYTES) {
+    return {
+      ok: false,
+      message: `That file is over ${MAX_CSV_BYTES / 1024 / 1024} MB. Split it and import the parts.`,
+    };
+  }
+
+  let parsed;
+  try {
+    parsed = parseExportifyCsv(text);
+  } catch (error) {
+    if (error instanceof CsvTooLargeError || error instanceof CsvFormatError) {
+      return { ok: false, message: error.message };
+    }
+    throw error;
+  }
+
+  if (parsed.tracks.length === 0) {
+    return {
+      ok: false,
+      message: "No row in that file had a usable Spotify track URI, so there was nothing to use.",
+    };
+  }
+
+  const name = (options.name ?? "").trim() || defaultName(options.filename);
+
+  const result = await applyCsvToCollection(
+    ownerId,
+    collectionId,
+    toImportableCollection(name, parsed),
+    mode,
+    {
+      apply: options.apply,
+      filename: options.filename ?? null,
+      contentHash: hashContent(text),
+    },
+  );
+
+  return result.ok
+    ? { ok: true, preview: result.preview, applied: result.applied, skipped: parsed.skipped }
+    : { ok: false, message: result.message };
+}
+
+export type CsvIntoCollectionOutcome =
+  | { ok: true; preview: RefreshPreview; applied: boolean; skipped: CsvRowError[] }
+  | { ok: false; message: string };

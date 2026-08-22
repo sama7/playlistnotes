@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { NOTE_LIST_INCLUDE } from "@/lib/notes/list";
 import { NoteNotFoundError } from "@/lib/notes/service";
 
 /**
@@ -87,6 +88,13 @@ export async function setNoteTags(
      */
     await tx.tag.deleteMany({ where: { ownerId, notes: { none: {} } } });
 
+    /**
+     * Tags live in a join table, so retagging never touched the note row and
+     * "edited" silently ignored it. Changing a note's tags IS editing the note —
+     * unlike changing its visibility, which deliberately does not count.
+     */
+    await tx.note.update({ where: { id: note.id }, data: { updatedAt: new Date() } });
+
     return wanted;
   });
 }
@@ -100,6 +108,68 @@ export async function listTags(ownerId: string): Promise<Array<{ name: string; c
   return tags.map((t) => ({ name: t.name, count: t._count.notes }));
 }
 
+/**
+ * Rename a tag everywhere it is used.
+ *
+ * Renaming onto a name the user already has is a **merge**, not an error: they
+ * typed "late-night" and "late night" over six months and now want one tag, and
+ * refusing would leave them deleting notes' tags by hand. The merge re-points
+ * the note links and drops the emptied row, all in one transaction so no note is
+ * briefly untagged.
+ */
+export async function renameTag(
+  ownerId: string,
+  from: string,
+  to: string,
+): Promise<string | null> {
+  const oldName = normalizeTagName(from);
+  const newName = normalizeTagName(to);
+  if (!oldName || !newName || oldName === newName) return null;
+
+  return prisma.$transaction(async (tx) => {
+    const source = await tx.tag.findUnique({
+      where: { ownerId_name: { ownerId, name: oldName } },
+      select: { id: true },
+    });
+    if (!source) return null;
+
+    const target = await tx.tag.findUnique({
+      where: { ownerId_name: { ownerId, name: newName } },
+      select: { id: true },
+    });
+
+    if (!target) {
+      await tx.tag.update({ where: { id: source.id }, data: { name: newName } });
+      return newName;
+    }
+
+    // Merging. `skipDuplicates` covers notes that already carry both tags —
+    // without it the composite primary key would abort the whole rename.
+    const links = await tx.noteTag.findMany({
+      where: { tagId: source.id },
+      select: { noteId: true },
+    });
+    await tx.noteTag.createMany({
+      data: links.map((l) => ({ noteId: l.noteId, tagId: target.id })),
+      skipDuplicates: true,
+    });
+    await tx.tag.delete({ where: { id: source.id } });
+    return newName;
+  });
+}
+
+/**
+ * Delete a tag, and its links to notes. The notes themselves are untouched —
+ * removing a label must never remove the writing it was attached to.
+ */
+export async function deleteTag(ownerId: string, name: string): Promise<void> {
+  const tagName = normalizeTagName(name);
+  if (!tagName) return;
+  // Owner-scoped in the WHERE clause, so another user's identically named tag
+  // is out of reach rather than merely unlikely to be addressed.
+  await prisma.tag.deleteMany({ where: { ownerId, name: tagName } });
+}
+
 /** Notes carrying a given tag, owner-scoped at both ends. */
 export async function notesByTag(ownerId: string, tagName: string) {
   const name = normalizeTagName(tagName);
@@ -108,7 +178,7 @@ export async function notesByTag(ownerId: string, tagName: string) {
   return prisma.note.findMany({
     where: { ownerId, tags: { some: { tag: { ownerId, name } } } },
     orderBy: { updatedAt: "desc" },
-    include: { recording: { include: { externalIds: true } } },
+    include: NOTE_LIST_INCLUDE,
     take: 100,
   });
 }

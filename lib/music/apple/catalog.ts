@@ -1,6 +1,7 @@
 import { appleDeveloperToken, appleMusicConfigured } from "./developer-token";
 import { AppleMusicUnavailableError } from "./music-api";
 import type { ImportableCollection, ImportableTrack } from "../importable";
+import { fromAppleTemplate } from "../artwork";
 import { Provider } from "@prisma/client";
 
 /**
@@ -43,6 +44,7 @@ interface RawSong {
     trackNumber?: number;
     releaseDate?: string;
     isrc?: string;
+    artwork?: { url?: string };
   };
   relationships?: { artists?: { data?: RawArtist[] } };
 }
@@ -101,6 +103,7 @@ function shapeSong(
     durationMs: typeof a.durationInMillis === "number" ? a.durationInMillis : null,
     isrc: a.isrc ?? null,
     trackNumber: typeof a.trackNumber === "number" ? a.trackNumber : null,
+    artwork: fromAppleTemplate(a.artwork?.url),
     album,
   };
 }
@@ -115,7 +118,12 @@ export async function fetchAppleAlbumCatalog(
   const body = await get<{
     data?: Array<{
       id?: string;
-      attributes?: { name?: string; artistName?: string; releaseDate?: string };
+      attributes?: {
+        name?: string;
+        artistName?: string;
+        releaseDate?: string;
+        artwork?: { url?: string };
+      };
       relationships?: { artists?: { data?: RawArtist[] }; tracks?: { data?: RawSong[] } };
     }>;
   }>(
@@ -157,6 +165,7 @@ export async function fetchAppleAlbumCatalog(
     name: albumRef.name,
     description: null,
     sourceUrl: `https://music.apple.com/album/${album.id}`,
+    artwork: fromAppleTemplate(album.attributes?.artwork?.url),
     tracks,
     truncated: false,
   };
@@ -172,7 +181,12 @@ export async function fetchApplePlaylistCatalog(
   const body = await get<{
     data?: Array<{
       id?: string;
-      attributes?: { name?: string; curatorName?: string; description?: { standard?: string } };
+      attributes?: {
+        name?: string;
+        curatorName?: string;
+        description?: { standard?: string };
+        artwork?: { url?: string };
+      };
       relationships?: { tracks?: { data?: RawSong[]; next?: string } };
     }>;
   }>(
@@ -230,6 +244,7 @@ export async function fetchApplePlaylistCatalog(
     name: playlist.attributes?.name ?? "Untitled playlist",
     description: playlist.attributes?.description?.standard?.trim() || null,
     sourceUrl: `https://music.apple.com/playlist/${playlist.id}`,
+    artwork: fromAppleTemplate(playlist.attributes?.artwork?.url),
     tracks,
     truncated: pages >= MAX_PAGES,
   };

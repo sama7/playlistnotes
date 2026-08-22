@@ -1,17 +1,10 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { prisma } from "@/lib/db";
-import { getSharedNote } from "@/lib/notes/service";
+import { CoverArt } from "@/components/cover-art";
+import { getSharedNoteView } from "@/lib/notes/service";
 
 export const dynamic = "force-dynamic";
 
-/**
- * A deliberately shared note, readable without signing in.
- *
- * Unlisted pages are addressable but must never be discoverable, so this sets
- * `noindex` regardless of the global setting. Nothing here reveals the note's
- * UUID, its owner's identity, or anything the owner did not publish.
- */
 /**
  * Metadata for a deliberately shared note.
  *
@@ -22,7 +15,9 @@ export const dynamic = "force-dynamic";
  * is forwarded to, in a way the person who shared it never approved.
  *
  * So the unfurl says the product's name and nothing else. Anyone who opens the
- * link sees the note; anyone who merely sees it pasted does not.
+ * link sees the note; anyone who merely sees it pasted does not. **Adding
+ * `generateMetadata` to this route is forbidden and tested for** — enriching
+ * the page below is safe, enriching the unfurl is not.
  */
 export const metadata: Metadata = {
   title: "A shared note",
@@ -34,6 +29,13 @@ export const metadata: Metadata = {
   },
 };
 
+/**
+ * A deliberately shared note, readable without signing in.
+ *
+ * Every field comes from `getSharedNoteView`, whose select list is the security
+ * boundary — the page cannot render what it was never handed, so it cannot leak
+ * the owner's id, the note's UUID, its token, or the place it was written.
+ */
 export default async function SharedNotePage({
   params,
 }: {
@@ -43,36 +45,66 @@ export default async function SharedNotePage({
 
   // Visibility is re-checked in the query, so un-publishing genuinely revokes
   // access rather than merely hiding the link.
-  const note = await getSharedNote(token);
+  const note = await getSharedNoteView(token);
   if (!note) notFound();
 
-  const recording = await prisma.recording.findUniqueOrThrow({
-    where: { id: note.recordingId },
-    include: { externalIds: true },
-  });
-
-  const title = note.displayTitle ?? recording.title;
-  const artist = note.displayArtist ?? recording.artistDisplay;
-  const spotify = recording.externalIds.find((e) => e.provider === "spotify");
-
   return (
-    <main>
+    <main className="shared">
       <p className="eyebrow">Shared from TrackJot</p>
-      <h1>{title}</h1>
-      <p className="lede">{artist}</p>
+
+      <div className="shared-head">
+        <CoverArt
+          url={note.artworkThumbUrl}
+          fullUrl={note.artworkUrl}
+          size={160}
+          title={note.title}
+          className="shared-cover"
+        />
+        <div>
+          <h1>{note.title}</h1>
+          {note.artist && <p className="lede">{note.artist}</p>}
+          {note.albumTitle && <p className="note album">{note.albumTitle}</p>}
+          {note.aboutCollection && (
+            <p className="note">About the collection {note.aboutCollection}</p>
+          )}
+          {note.providerUrl && note.providerName && (
+            <p className="note">
+              <a href={note.providerUrl} target="_blank" rel="noopener noreferrer">
+                Open in {note.providerName}
+              </a>
+            </p>
+          )}
+        </div>
+      </div>
 
       <blockquote className="shared-note">{note.body}</blockquote>
 
-      {spotify?.providerUrl && (
-        <p>
-          <a href={spotify.providerUrl} target="_blank" rel="noopener noreferrer">
-            Open in Spotify
-          </a>
-        </p>
+      {/*
+        The note's own tags, and only those. Tags are a private filing system
+        (lib/notes/tags.ts), so this deliberately shows the labels on THIS note
+        rather than anything about the writer's wider vocabulary — and they are
+        plain text here, not links, because there is nothing an anonymous reader
+        could filter.
+      */}
+      {note.tags.length > 0 && (
+        <div className="row tag-list">
+          {note.tags.map((name) => (
+            <span key={name} className="chip tag">
+              {name}
+            </span>
+          ))}
+        </div>
       )}
 
-      <p className="note" style={{ marginTop: "2rem" }}>
-        This is one note someone chose to share. Their other notes are private.
+      <p className="note shared-by">
+        {note.author ? (
+          <>
+            Shared by <strong>{note.author}</strong>. This is one note they chose to
+            share; their other notes are private.
+          </>
+        ) : (
+          <>This is one note someone chose to share. Their other notes are private.</>
+        )}
       </p>
     </main>
   );

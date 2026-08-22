@@ -1,4 +1,10 @@
-import { PrismaClient, Provider, RecordingOrigin, Visibility } from "@prisma/client";
+import {
+  PlacePrecision,
+  PrismaClient,
+  Provider,
+  RecordingOrigin,
+  Visibility,
+} from "@prisma/client";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import {
   NoteNotFoundError,
@@ -7,13 +13,15 @@ import {
   deleteNote,
   getNote,
   getSharedNote,
+  getSharedNoteView,
   listNotes,
   publishNoteUnlisted,
-  rotateShareToken,
+  setNoteVisibility,
   unpublishNote,
   updateNote,
 } from "@/lib/notes/service";
 import { resolveByProviderId } from "@/lib/music/resolve-recording";
+import { setNoteTags } from "@/lib/notes/tags";
 import { resetDatabase } from "./reset";
 
 const prisma = new PrismaClient();
@@ -91,12 +99,15 @@ describe("cross-user denial — User B supplies a VALID UUID owned by User A", (
     expect(after.shareToken).toBeNull();
   });
 
-  it("cannot rotate its share token", async () => {
+  it("cannot change its visibility", async () => {
     const { ada, blue, adasNote } = await scenario();
     const published = await publishNoteUnlisted(ada.id, adasNote.id);
 
-    await expect(rotateShareToken(blue.id, adasNote.id)).rejects.toThrow(NoteNotFoundError);
+    await expect(
+      setNoteVisibility(blue.id, adasNote.id, Visibility.public),
+    ).rejects.toThrow(NoteNotFoundError);
     const after = await prisma.note.findUniqueOrThrow({ where: { id: adasNote.id } });
+    expect(after.visibility).toBe(Visibility.unlisted);
     expect(after.shareToken).toBe(published.shareToken);
   });
 
@@ -262,15 +273,33 @@ describe("share tokens", () => {
     expect(await getSharedNote(published.shareToken!)).not.toBeNull();
   });
 
-  it("revokes access when the token is rotated", async () => {
+  /**
+   * The replacement for the old "rotate the token" control. Killing a leaked
+   * link is going private — which clears the token — and sharing again mints a
+   * new one, so the guarantee rotation offered still holds through one concept
+   * instead of two.
+   */
+  it("issues a different token when a note is shared again after going private", async () => {
     const { ada, adasNote } = await scenario();
-    const published = await publishNoteUnlisted(ada.id, adasNote.id);
-    const leaked = published.shareToken!;
+    const leaked = (await publishNoteUnlisted(ada.id, adasNote.id)).shareToken!;
 
-    const rotated = await rotateShareToken(ada.id, adasNote.id);
+    await unpublishNote(ada.id, adasNote.id);
+    const reshared = await publishNoteUnlisted(ada.id, adasNote.id);
 
+    expect(reshared.shareToken).not.toBe(leaked);
     expect(await getSharedNote(leaked)).toBeNull();
-    expect(await getSharedNote(rotated.shareToken!)).not.toBeNull();
+    expect(await getSharedNote(reshared.shareToken!)).not.toBeNull();
+  });
+
+  it("keeps a public note reachable by the same token", async () => {
+    const { ada, adasNote } = await scenario();
+    const unlisted = await publishNoteUnlisted(ada.id, adasNote.id);
+
+    const madePublic = await setNoteVisibility(ada.id, adasNote.id, Visibility.public);
+
+    expect(madePublic.visibility).toBe(Visibility.public);
+    expect(madePublic.shareToken).toBe(unlisted.shareToken);
+    expect(await getSharedNote(madePublic.shareToken!)).not.toBeNull();
   });
 
   /** Un-publishing must revoke, not merely hide the link. */
@@ -288,5 +317,104 @@ describe("share tokens", () => {
     const { adasNote } = await scenario();
     expect(adasNote.shareToken).toBeNull();
     expect(await getSharedNote("guessed-token")).toBeNull();
+  });
+});
+
+/**
+ * What a shared note shows, and what it must never show.
+ *
+ * The page was enriched with cover art, the album, the note's tags and the
+ * writer's chosen name. Everything a share page renders is a disclosure, so the
+ * projection that feeds it is asserted directly — both halves: the fields that
+ * SHOULD appear, and the ones that must not, whatever the page is edited into
+ * later.
+ */
+describe("the shared-note projection", () => {
+  async function shared(overrides: { username?: string | null } = {}) {
+    const owner = await prisma.user.create({
+      data: {
+        authSubject: `s_${crypto.randomUUID()}`,
+        username: overrides.username === undefined ? "samah" : overrides.username,
+      },
+    });
+
+    const album = await prisma.album.create({
+      data: { title: "IGOR", artworkUrl: "https://i.scdn.co/image/full" },
+    });
+    const recording = await prisma.recording.create({
+      data: {
+        title: "Darling, I",
+        artistDisplay: "Tyler, The Creator",
+        origin: RecordingOrigin.provider,
+        normalizedKey: `k_${crypto.randomUUID()}`,
+        albumId: album.id,
+        artworkThumbUrl: "https://i.scdn.co/image/thumb",
+        externalIds: {
+          create: {
+            provider: Provider.spotify,
+            providerId: `p_${crypto.randomUUID()}`,
+            providerUrl: "https://open.spotify.com/track/x",
+          },
+        },
+      },
+    });
+
+    const note = await createNote(owner.id, {
+      recordingId: recording.id,
+      body: "the fourth listen is the one",
+      placeLabel: "Toronto",
+      placePrecision: PlacePrecision.area,
+    });
+    await setNoteTags(owner.id, note.id, ["late night", "drives"]);
+    const published = await publishNoteUnlisted(owner.id, note.id);
+
+    return { owner, note, token: published.shareToken! };
+  }
+
+  it("shows the art, the album, the tags and the author", async () => {
+    const { token } = await shared();
+    const view = (await getSharedNoteView(token))!;
+
+    expect(view.title).toBe("Darling, I");
+    expect(view.artist).toBe("Tyler, The Creator");
+    expect(view.albumTitle).toBe("IGOR");
+    expect(view.artworkUrl).toBe("https://i.scdn.co/image/full");
+    expect(view.artworkThumbUrl).toBe("https://i.scdn.co/image/thumb");
+    expect(view.providerName).toBe("Spotify");
+    expect(view.tags.sort()).toEqual(["drives", "late night"]);
+    expect(view.author).toBe("samah");
+  });
+
+  /**
+   * The important half. A shared page cannot render what it was never handed,
+   * so these absences are the guarantee rather than a detail of the markup.
+   */
+  it("carries no owner id, no note id, no token, and no place", async () => {
+    const { owner, note, token } = await shared();
+    const serialised = JSON.stringify(await getSharedNoteView(token));
+
+    expect(serialised).not.toContain(owner.id);
+    expect(serialised).not.toContain(note.id);
+    expect(serialised).not.toContain(token);
+    expect(serialised).not.toContain("Toronto");
+    expect(serialised).not.toContain(owner.authSubject);
+  });
+
+  it("credits nobody rather than inventing a name", async () => {
+    const { token } = await shared({ username: null });
+    expect((await getSharedNoteView(token))!.author).toBeNull();
+  });
+
+  it("returns nothing once the note is private again", async () => {
+    const { owner, note, token } = await shared();
+    expect(await getSharedNoteView(token)).not.toBeNull();
+
+    await unpublishNote(owner.id, note.id);
+
+    expect(await getSharedNoteView(token)).toBeNull();
+  });
+
+  it("returns nothing for a token that belongs to no note", async () => {
+    expect(await getSharedNoteView("not-a-real-token")).toBeNull();
   });
 });

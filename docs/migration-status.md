@@ -754,6 +754,285 @@ itself a handshake loop; and a gate that cannot be passed now throws instead of
 warning, since thirteen specs failing on their own assertions reads exactly like
 a broken application.
 
+## Product pass after first real use — 2026-08-14
+
+Samah used the deployed app properly for the first time and the feedback was
+mostly about **shape**, not bugs. Almost every item traced back to the same
+root: the app had been built as a set of correct operations rather than as a
+sequence a person moves through. This pass fixes that.
+
+### Capture now reads before it writes
+
+The single box asked for a note *before* it knew what had been pasted. A
+playlist link therefore offered a note box that could never be saved, and a
+track link asked for a title the provider was about to supply anyway.
+
+Capture is now two deliberate steps, split across `lib/music/preview-link.ts`
+(side-effect-free resolution) and `app/notes/capture-actions.ts` (the writes):
+
+- **Look up** — `previewLink()` says what a link is and **creates nothing**. It
+  keeps the database-first ordering, so a recording already held is answered
+  with zero provider calls however many times it is pasted, and a user who
+  pastes a link and walks away leaves no row behind.
+- **Then write** — a *track* preview shows its cover, title, artist and album
+  and only then offers a note box. A *collection* preview shows its cover and
+  offers to be added, with **no note box at all**.
+
+Two pills replace the mixed form: **Paste a link** (preferred) and **Type it
+in**. Title and artist fields exist only in the manual tab, so it is never
+ambiguous which input wins.
+
+The save path re-resolves the recording from the provider ID via the new
+`captureFromProviderRef()` rather than trusting hidden fields, so a tampered
+form can at worst name a different real track.
+
+### Collection-level notes
+
+`notes.recording_id` is now nullable and `notes.collection_id` exists, with two
+CHECK constraints written by hand (Prisma cannot express them):
+
+- `notes_exactly_one_subject` — `num_nonnulls(recording_id, collection_id) = 1`
+- `notes_context_requires_recording` — a `collection_item_id` requires a recording
+
+This is §3a's "honest form of collection-level journaling", which the plan
+deferred rather than rejected. `searchNotes` was switched to LEFT JOINs against
+both subjects; an inner join on `recordings` would have made every
+collection-level note silently unfindable, which is the one promise the product
+makes.
+
+### Cover art, stored as links
+
+`lib/music/artwork.ts` normalises what the providers hand back — Spotify returns
+fixed renditions (640/300/64) while Apple returns a `{w}x{h}` template, so we
+ask Apple for exactly the sizes we render. Two sizes are stored per album,
+recording and collection: full for a page hero, thumb for list rows.
+
+**Still links, never bytes** (AGENTS.md's "linked, never rehosted"). That also
+answers the capacity question: artwork adds effectively **zero** disk. The
+droplet is at 16G of 48G used, 32G free, 1.1Gi RAM available; the whole trackjot
+database is 8983 kB.
+
+`components/cover-art.tsx` renders a plain `<img>` rather than `next/image`, on
+purpose: the optimizer would fetch, re-encode and cache every provider image on
+a 2 GB box that also runs MKDb's PostgreSQL — rehosting by another name. It
+applies a host allowlist (`safeArtwork`) at one place, so no page can turn an
+attacker-supplied URL into a tracking beacon, and sends no referrer.
+
+### Sharing is one question with three answers
+
+"Create share link", "Make private" and "Rotate link" asked users to reason
+about token lifecycles. People hold this as an **audience**, so it is now one
+select: private / unlisted / public.
+
+**Rotation is gone deliberately.** It was never a distinct intent — its real use
+("this link got out") is *going private*, which clears the token; sharing again
+mints a new one. Same guarantee, one concept. The test that proved rotation
+revoked a leaked link was replaced by one proving the private-then-share cycle
+does, rather than deleted.
+
+### The rest of the pass
+
+| Gap | Now |
+| --- | --- |
+| No navigation anywhere; a bare "Sign in" in the landing footer under two sign-in buttons; signing in landed on `/account` | `components/site-nav.tsx` on every page, `components/site-footer.tsx` with no auth link, and `signInFallbackRedirectUrl="/notes"` set on `ClerkProvider` rather than in `NEXT_PUBLIC_*` — one fewer value that has to match across the build boundary |
+| No About page | `/about`, public, stating plainly who can see a note and what happens to it |
+| Every note rendered as an open textarea | Read-only until **Edit**, with "Written 3 Aug · edited 14 Aug" from `lib/format-date.ts` (fixed locale and UTC, so server and client agree and hydration does not swap the text) |
+| Tags could be typed and removed, never renamed or deleted | `renameTag` (renaming onto an existing name **merges**, in one transaction) and `deleteTag` (keeps the notes), surfaced on the filtered tag |
+| No tag completion | `app/notes/tag-input.tsx` completes the token under the cursor. A `<datalist>` was tried first and is wrong: it matches the whole field, so it stops suggesting after the first comma |
+| Collections could not be renamed or deleted | Both, with delete stating what survives — track notes keep their writing via `ON DELETE SET NULL`; a note about the collection itself goes with it |
+| Fifty-track playlists wrapped four lines per row on a phone | `app/collections/[id]/track-row.tsx` — inline on desktop (number, cover, title, artist, album), and on a narrow screen the album and note controls move behind one button that opens a bottom sheet. **Rendered once**, positioned by CSS, so there is never a second copy of an open textarea |
+
+### Validation — run 2026-08-14, all green
+
+```
+npm run typecheck                        clean
+npm run lint                             clean
+npm test                                 134 passed
+npm run test:integration                 157 passed  (+19 new)
+npm run test:e2e                         30 passed  (+2 new, 0 skipped)
+npm run build                            succeeded
+```
+
+New integration coverage: `collection-management.test.ts` (10) proves deleting a
+collection keeps track notes and drops only the collection's own note, that both
+CHECK constraints reject a note about two subjects or none, and cross-user
+denial with **valid** UUIDs for rename and delete. `tags.test.ts` gained 6 cases
+for rename/merge/delete including "cannot touch another user's identically named
+tag". `search.test.ts` gained 3 for collection-level notes, including that they
+do not leak to a second user.
+
+**One real accessibility defect was caught by the suite, not by eye:** the
+"preferred" hint on the capture pill used `opacity: 0.75`, which put 11.52px
+text at 3.16:1 against white — under the 4.5:1 floor. It now inherits the pill's
+colour.
+
+Nothing is committed, pushed or deployed. Local only, pending review.
+
+## Second product pass — 2026-08-17/18
+
+Samah reviewed the first pass in a browser and filed nineteen items. Most were
+shape rather than defect, but the first one was a real bug and led to two more
+of the same family.
+
+### The visibility control was broken in two different ways
+
+Reported as "the dropdown snaps back to private". Reproduced in a browser and
+found to be two bugs stacked:
+
+1. **React 19 resets an uncontrolled form after a Server Action completes.** A
+   `<select defaultValue>` is restored from the `selected` *attribute* React set
+   at mount, which never updates — so the pill said "unlisted" while the control
+   said "private", and private could then not be chosen because the control
+   already claimed to be there.
+2. Making it controlled fixed the display and revealed the worse one: **React
+   restores a controlled input's DOM value during the change event, and the form
+   serialised its FormData after that restore.** Every change after the first
+   submitted the *previous* value. The UI looked right and the write did nothing.
+
+The fix is to keep the value in React state and pass it to the Server Action as
+an **argument**, never through the DOM. The form remains only as the no-JS
+fallback. A third instance of the same family — client state seeded once from
+props, outliving the server truth — was then found in the collection's note
+picker and fixed by keying the component on the server state.
+
+**The lesson worth keeping: a control that reflects a server value must not
+carry that value across an action boundary in the DOM.**
+
+Two further defects surfaced only because the work was driven in a real browser:
+
+- `<SignOutButton>` with a custom `<button>` child threw
+  "You've passed multiple children components" and **took down every signed-in
+  page**. Clerk's control components own their trigger; ours style a wrapper.
+- `refreshCollection` tried the Spotify album endpoint and fell through to the
+  playlist endpoint on failure — but `fetchAlbum` *throws* on 404, so every
+  playlist refresh 500'd. It now reads the kind from the stored `source_url`,
+  which was captured at import for exactly this reason.
+- A Server Action that threw left the refresh button reading "Checking…"
+  permanently, because the busy flag was cleared on the line after the `await`.
+  Now in a `finally`.
+
+### Collections are no longer immutable snapshots
+
+**This reverses a recorded invariant, deliberately.** The snapshot rule
+protected notes absolutely by refusing to let a playlist change; playlists
+change, so it solved the safety problem by declining the use case. A collection
+can now be refreshed from its source, or have a CSV applied to it, with the
+guarantee upheld directly instead:
+
+- A note anchors to **(recording, occurrence)** — the nth appearance of that
+  recording — so a note on the *second* copy of a repeated track follows the
+  second copy however the order changes. `collection_items.occurrence` was added
+  and backfilled for this.
+- A note whose slot is gone is **orphaned, never deleted**: it keeps its body,
+  tags and recording, and stops claiming a playlist position.
+- Every refresh is **previewed before it happens**, listing in full every note
+  that would come unstuck. Nothing is written until that is confirmed.
+- Re-anchoring is **not** an edit, so a refresh does not make fifty notes claim
+  they were rewritten today.
+
+CSV import gained the same two modes: replace (the default — a re-export *is*
+the playlist now) or append.
+
+### Sharing selected notes with a collection
+
+The invariant survives in a new form: publishing a collection never publishes
+the notes inside it — it publishes **the ones you ticked**, and nothing is
+ticked by default. `getSharedCollection` still cannot return a note; notes travel
+only through a separate query gated on a per-note boolean, and turning a note
+private or the collection private clears it.
+
+### The rest
+
+| # | Item | Outcome |
+| --- | --- | --- |
+| 2 | Share URL printed on screen | A copy button; the URL remains as its accessible name |
+| 3 | Blurry thumbnails on a phone | Thumbs are fetched at 300px and drawn at ~48–56px (a 3x display needs ~170px); tapping any cover opens it full size in a native `<dialog>` |
+| 4 | No album name on `/notes` | Shown, from the linked album or the denormalized title |
+| 5 | Visibility changes bumped "edited" | It no longer does. Body and **tags** do; tags previously did not, because they live in a join table |
+| 6 | UTC dates showed tomorrow | US format, `America/New_York`. A per-account time zone is owed before launch |
+| 7 | No sorting | Track / artist / album / when-heard / recently-written, each direction, all in the URL |
+| 11 | "Open the original" | "Open in Spotify" / "Open in Apple Music" |
+| 13 | — | Optional **"heard on"** date at day, month or year precision — the stored timestamp anchors the range and the precision decides rendering, so a year never displays as a day |
+| 14 | — | Optional **place**, coarse by default; coordinates only with a per-note opt-in, enforced by a CHECK |
+| 15 | — | Filters by track, artist, album, place and heard-date range |
+| 16 | — | Export as JSON, CSV or Markdown from `/account` |
+| 17 | Stock `confirm()` dialogs | Native `<dialog>`, **Cancel autofocused**, and the body says what survives |
+| 18 | Stacked sheets on mobile | One open row by construction; notes visible under every track at all widths; the sheet shows the cover large |
+| 8 | — | Usernames: claimed on `/account`, case-folded, route names reserved. **Following and tagging other users are not built** |
+
+### Validation — 2026-08-18
+
+```
+npm run typecheck                        clean
+npm run lint                             clean
+npm test                                 138 passed
+npm run test:integration                 186 passed  (+29 new)
+npm run build                            succeeded
+```
+
+New coverage: `collection-refresh.test.ts` (9) proves a note follows its track
+across a reorder, that a note on the second copy of a repeated track follows the
+second copy, that a lost slot orphans rather than deletes, and that re-anchoring
+does not touch `updatedAt`. `note-journal.test.ts` (15) pins down what counts as
+editing, the two new CHECK constraints, sorting and filtering, and that CSV
+export survives a body containing a comma, a quote and a newline.
+`collection-sharing.test.ts` gained 5 for selective sharing in both directions.
+
+Every fix above was also exercised in a real browser against the running app.
+
+Nothing is committed, pushed or deployed.
+
+## Shared-note page and a revoked-link 404 — 2026-08-21
+
+Two items from testing a live share link.
+
+**A revoked link showed a bare framework 404.** Reported as a red overlay error
+(`'SharedNotePage' cannot have a negative time stamp`) — that part is a Next.js
+**dev-overlay artifact** that fires when a Server Component calls `notFound()`,
+and a real production build was verified to return a clean 404 with no error.
+But the underlying experience was still wrong: someone who was sent a link by a
+friend met "This page could not be found", which reads as a broken product
+rather than as a deliberate act. `/n/[token]` and `/c/[token]` now have their
+own not-found pages saying the link isn't available and that sharing can be
+taken back.
+
+**The copy is identical whether the link was revoked or never existed.** That is
+the point, not laziness: distinguishing them would make the page an oracle for
+testing guessed tokens.
+
+**A shared note now shows the cover, the album, its tags and who shared it.**
+The page reads from `getSharedNoteView`, a projection whose select list is the
+security boundary — a page cannot render what it was never handed. Three
+deliberate omissions, asserted by test:
+
+- **the place and the "heard on" date** — a shared note is a quotation, not a
+  check-in, and location is the one field where an accidental disclosure cannot
+  be taken back;
+- **anything identifying beyond a chosen name** — no email, no auth subject, no
+  user id; the author is a username or display name they picked, or nothing at
+  all, rather than an invented identity;
+- **the note's UUID, its owner's id and its share token.**
+
+Link previews are unchanged and still generic: `generateMetadata` remains
+forbidden on those routes. The guard that enforces it now strips comments before
+matching, because a bare substring check made it impossible to *name* the rule in
+the file it governs — which pressures the next person to delete the explanation
+rather than keep the guarantee.
+
+### Validation — 2026-08-21
+
+```
+npm run typecheck / lint                 clean
+npm test                                 138 passed
+npm run test:integration                 191 passed  (+5 new)
+npm run test:e2e                          31 passed
+npm run build                            succeeded
+```
+
+The 404 and the enriched page were both verified against a **real production
+build** served from the standalone artifact, not against the dev server — the
+dev overlay is exactly what made the original report ambiguous.
+
 ## What is left before a public release
 
 | # | Work | Est. | Blocked? |
