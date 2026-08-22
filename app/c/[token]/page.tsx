@@ -98,7 +98,7 @@ export default async function SharedCollectionPage({
       {collection.sourceUrl && (
         <p style={{ marginTop: "1.5rem" }}>
           <a href={collection.sourceUrl} target="_blank" rel="noopener noreferrer">
-            Open the original
+            Open in {collection.sourceName ?? "the source"}
           </a>
         </p>
       )}

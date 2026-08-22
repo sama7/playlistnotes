@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { Visibility, type Collection } from "@prisma/client";
 import { prisma } from "@/lib/db";
+import { providerLabel } from "@/lib/notes/list";
 
 /**
  * Publishing a collection — and the invariant that makes it safe.
@@ -150,6 +151,9 @@ export interface SharedCollection {
   name: string;
   description: string | null;
   sourceUrl: string | null;
+  /** Which service the source link points at. The URL already says so; naming
+   *  it just spares the reader from having to read a URL to find out. */
+  sourceName: string | null;
   snapshotAt: Date | null;
   tracks: Array<{
     position: number;
@@ -276,6 +280,7 @@ export async function getSharedCollection(shareToken: string): Promise<SharedCol
       name: true,
       description: true,
       sourceUrl: true,
+      sourceProvider: true,
       sourceSnapshotAt: true,
       items: {
         orderBy: { position: "asc" },
@@ -306,6 +311,7 @@ export async function getSharedCollection(shareToken: string): Promise<SharedCol
     name: collection.name,
     description: collection.description,
     sourceUrl: collection.sourceUrl,
+    sourceName: providerLabel(collection.sourceProvider),
     snapshotAt: collection.sourceSnapshotAt,
     about: shared.about,
     tracks: collection.items.map((item) => ({

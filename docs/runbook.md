@@ -23,6 +23,31 @@ processes, files, databases, and vhosts.
 | Backups | `/var/backups/trackjot/{hourly,daily}` |
 | Backup log | `/var/log/tj-backup.log`, last result in `/var/lib/tj-backup/last-status` |
 
+## Backfilling cover art
+
+Artwork is captured at **import time**, so anything written before the artwork
+columns existed has none — and re-rendering cannot invent it. The identifiers are
+stored, which is why it is recoverable:
+
+```bash
+npx tsx --env-file=.env scripts/backfill-artwork.ts           # dry run
+npx tsx --env-file=.env scripts/backfill-artwork.ts --apply   # write
+```
+
+Idempotent (only fills `artwork_url IS NULL`), additive (two URL columns, nothing
+else), and safe to interrupt. It fills albums first on purpose: a recording shows
+its album's cover when it has none of its own, so that is one provider call per
+album rather than one per track.
+
+Against production, reach the droplet-local database through a tunnel rather than
+exposing it:
+
+```bash
+ssh -fN -L 55432:localhost:5432 root@<droplet>
+DATABASE_URL='postgresql://…@localhost:55432/trackjot' \
+  npx tsx scripts/backfill-artwork.ts --apply
+```
+
 ## Deploying
 
 CI builds the artifact; the droplet only runs it. From a clean checkout:

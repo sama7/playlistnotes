@@ -2,6 +2,7 @@ import Link from "next/link";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { CoverArt } from "@/components/cover-art";
+import { providerLabel } from "@/lib/notes/list";
 import { describeTimestamps, formatDay } from "@/lib/format-date";
 import { CsvImportForm } from "./import-form";
 
@@ -63,10 +64,10 @@ export default async function CollectionsPage() {
                 </div>
                 <span className={`chip ${c.visibility}`}>{c.visibility}</span>
               </div>
-              {c.sourceUrl && (
+              {c.sourceUrl && providerLabel(c.sourceProvider) && (
                 <p className="note">
                   <a href={c.sourceUrl} target="_blank" rel="noopener noreferrer">
-                    Open the original
+                    Open in {providerLabel(c.sourceProvider)}
                   </a>
                 </p>
               )}
