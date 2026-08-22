@@ -28,14 +28,42 @@ processes, files, databases, and vhosts.
 CI builds the artifact; the droplet only runs it. From a clean checkout:
 
 ```bash
-npm run build
+# The publishable key is pulled FROM THE DROPLET so the bundle cannot disagree
+# with the runtime. Never `source .env` for a production build — the local file
+# holds the development key, and that combination took the site down on
+# 2026-08-13 while every health check stayed green.
+LIVE_PK=$(ssh root@<droplet> 'grep "^NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=" /srv/trackjot/current/.env | cut -d= -f2-')
+case "$LIVE_PK" in pk_live_*) ;; *) echo "refusing: not a live key"; exit 1;; esac
+
+APP_BASE_URL=https://trackjot.com NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY="$LIVE_PK" npm run build
 # package: .next/standalone + .next/static + public + scripts/ + prisma/
-rsync -az --delete --exclude '.env' artifact/ root@<droplet>:/srv/trackjot/current/
+# --delete is safe only with BOTH excludes: .env is the live config and the
+# .env.bak.* file is the only copy of what it looked like before an edit.
+rsync -az --delete --exclude '.env' --exclude '.env.bak.*' artifact/ root@<droplet>:/srv/trackjot/current/
 ssh root@<droplet> 'cd /srv/trackjot/current && /opt/node24/bin/node scripts/check-env.mjs .env'
 ssh root@<droplet> 'cd /srv/trackjot/current && npx prisma migrate deploy'
 ssh root@<droplet> 'pm2 restart trackjot --update-env'
 ssh root@<droplet> 'cd /srv/trackjot/current && /opt/node24/bin/node scripts/smoke.js https://trackjot.com'
 ```
+
+**Take a rollback snapshot first** — `cp -a /srv/trackjot/current /srv/trackjot/previous`
+— and check `/var/lib/tj-backup/last-status` is recent before running migrations.
+
+**Smoke is not the last check.** It sends no HTML `Accept` header, so it cannot
+see a Clerk handshake loop; that is exactly what it missed during the 2026-08-13
+outage. Finish with requests shaped like a browser's, and ideally a real one:
+
+```bash
+UA='Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0 Safari/537.36'
+for p in / /invite /about; do
+  curl -s -o /dev/null -w "$p %{http_code}\n" -A "$UA" -H 'Accept: text/html' "https://trackjot.com$p"
+done
+```
+
+CI builds the same artifact and is the preferred source, but downloading it needs
+the `gh` CLI, which is **not installed on this machine**. Until it is, the local
+build above — with the key read from the droplet and verified by `check-env.mjs`
+after the copy — is the equivalent, and the key comparison is what makes it safe.
 
 `check-env.mjs` validates the **shape** of every configured secret, compares the
 publishable key **compiled into the bundle** against the one in `.env`, and never
