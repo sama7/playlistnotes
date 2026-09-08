@@ -1033,6 +1033,115 @@ The 404 and the enriched page were both verified against a **real production
 build** served from the standalone artifact, not against the dev server — the
 dev overlay is exactly what made the original report ambiguous.
 
+## Last.fm listening history — 2026-09-08
+
+The first post-core integration (Phase F), built to the shape Samah and GPT-6
+Astra converged on: **enter a username → see recent plays → choose one → write a
+private jot**, with the listening instant preserved as the note's date.
+
+### What it is allowed to be
+
+Three lines in `AGENTS.md` decided most of the design, and each is load-bearing:
+
+- **"Treat a Last.fm username as a source setting, not TrackJot authentication."**
+  It is the name of a public feed to read. `user.getrecenttracks` needs only an
+  application API key, so no user authorisation happens on Last.fm's side
+  either. It is not a login, grants access to nothing, and nothing depends on
+  the person who typed it owning that profile. Linking checks only that the
+  profile *exists*, which catches a typo — the contract permits claiming
+  verification only if the product says the profile is verified, and it does not.
+- **"Do not use Last.fm as the canonical recording identity."**
+- **"Do not use Last.fm-provided artwork under the ordinary API terms."** The
+  `image` array is never read; a unit test asserts no Last.fm image URL can
+  reach a returned object. Plays therefore show no cover, and the UI says why
+  rather than looking broken.
+
+`lastfm` remains deliberately absent from the `Provider` enum. A new
+`ListenSource` enum answers the different question — *who told us this was
+played* — for which listening history is a fine authority and identity is not.
+
+### The judgement call worth knowing about
+
+A scrobble arrives as three strings and, sometimes, a MusicBrainz id. So import
+forks:
+
+| Scrobble carries | Becomes | Why |
+| --- | --- | --- |
+| A recording MBID | A provider-anchored recording via the ordinary `resolveByProviderId` path | MusicBrainz is a trusted `Provider`; this is an identifier, not a name |
+| No MBID | `origin = user`, scoped to its creator | Names cannot create shared entities (§3a). Two people scrobbling the same obscure song get two rows — a duplicate is cheap, a false merge is not |
+
+**Where the residual risk sits:** the MBID is issued by an authority, but the
+claim that *this play is that recording* is Last.fm's own matching, which is
+imperfect. That claim is therefore also written to the `listens` row as
+provenance, so anything Last.fm influenced can be found and unwound later. The
+alternative — resolving by name — is the one thing the contract forbids
+outright. No artist or album rows are created from Last.fm data at all; the
+album title is carried as `releaseTitle`, which is display data.
+
+### Listens are separate from recordings
+
+`listens` is a ledger, not a mirror. A recording is "this song exists"; a listen
+is "you heard it, at 7:39pm on a Tuesday". Collapsing them would make the tenth
+play indistinguishable from the first, and repeated listening is exactly the
+signal a music journal wants. Rows are unique on `(owner, source, source_ref)`,
+so re-reading the same window updates rather than duplicating a history.
+
+Two edge cases are handled rather than ignored:
+
+- **A track still playing has no timestamp.** Last.fm genuinely cannot say when
+  a play happened until it finishes, so `playedAt` is null and the row is *not*
+  persisted — it is not yet a reported play. It is still offered for capture,
+  because the moment you are hearing something is the best moment to write about
+  it; capturing writes a row at that instant.
+- **The completed scrobble then arrives separately.** Rather than leaving the
+  imported row beside an orphan, a completed play whose normalized (artist,
+  track) matches a recent now-playing capture *absorbs* it, so "how many times
+  have I heard this" stays answerable.
+
+### `DatePrecision` gained `time`
+
+A scrobble reports the second. The existing precisions stopped at `day`, which
+would have discarded the one thing a listening history is authoritative about.
+The editor deliberately does **not** offer `time` — a date input collects a day,
+so offering it would let someone claim a precision the form cannot express.
+
+That created a trap worth naming: opening a scrobble-imported note in the editor
+and pressing Save would have rounded a known minute down to a day. The form now
+carries the stored instant and precision, and restores them when the day was not
+edited.
+
+### The notes page never waits on Last.fm
+
+The contract forbids a request handler waiting on Last.fm. The strip is a client
+component that fetches after the page renders — if Last.fm is slow or down, it
+says so and nothing else on the page is affected.
+
+### Validation — 2026-09-08
+
+```
+npm run typecheck / lint                 clean
+npm test                                 154 passed  (+16 new)
+npm run test:integration                 211 passed  (+20 new)
+npm run build                            succeeded
+```
+
+The 16 unit tests run against the shapes this endpoint actually produces,
+including the three that break naive parsers: it reports failure with **HTTP
+200**, returns a **bare object instead of an array** for a single result, and
+writes **empty strings** where a missing MBID belongs. The 20 integration tests
+pin the resolution fork above, sync idempotency, cross-user denial with a valid
+`source_ref`, and the now-playing reconciliation.
+
+### Not verified, and blocked on a key
+
+**`LASTFM_API_KEY` is not configured anywhere**, so none of this has run against
+the live API — only against recorded response shapes. A key is free and instant
+from <https://www.last.fm/api/account/create> (any application name; no callback
+URL needed for these read-only endpoints). Until one is set, the integration is
+invisible by design: `lastfmConfigured()` gates every surface, and an e2e test
+asserts the off state so an unconfigured deployment never offers a control that
+cannot work.
+
 ## What is left before a public release
 
 | # | Work | Est. | Blocked? |

@@ -1,0 +1,145 @@
+"use server";
+
+import { revalidatePath } from "next/cache";
+import { requireUser } from "@/lib/auth";
+import { LastfmUnavailableError } from "@/lib/music/lastfm/client";
+import {
+  LastfmNotLinkedError,
+  dismissLastfmPrompt,
+  importListen,
+  linkLastfm,
+  syncRecentListens,
+  unlinkLastfm,
+  type ListenView,
+} from "@/lib/listens/service";
+
+/**
+ * Server Actions for the listening-history source.
+ *
+ * Every one derives the acting user from the verified session and passes that
+ * id as the owner. Nothing here reads a user id from form data — the rule the
+ * whole authorization model rests on.
+ */
+
+export interface LinkState {
+  error?: string;
+  linked?: string;
+}
+
+export async function linkLastfmAction(
+  _previous: LinkState,
+  formData: FormData,
+): Promise<LinkState> {
+  const user = await requireUser();
+  const result = await linkLastfm(user.id, String(formData.get("username") ?? ""));
+
+  if (!result.ok) return { error: result.message };
+
+  revalidatePath("/notes");
+  revalidatePath("/account");
+  return { linked: result.username };
+}
+
+export async function unlinkLastfmAction(): Promise<void> {
+  const user = await requireUser();
+  await unlinkLastfm(user.id);
+  revalidatePath("/notes");
+  revalidatePath("/account");
+}
+
+export async function dismissLastfmPromptAction(): Promise<void> {
+  const user = await requireUser();
+  await dismissLastfmPrompt(user.id);
+  revalidatePath("/notes");
+}
+
+export type RecentState =
+  | { ok: true; listens: ListenView[] }
+  | { ok: false; message: string };
+
+/**
+ * Read the recent feed for the strip on the notes page.
+ *
+ * Called from the client after the page has rendered, deliberately: the notes
+ * page must never wait on Last.fm to paint. If this is slow or fails, the
+ * strip says so and everything else on the page is already there.
+ */
+export async function recentListensAction(): Promise<RecentState> {
+  const user = await requireUser();
+
+  try {
+    return { ok: true, listens: await syncRecentListens(user.id, 10) };
+  } catch (error) {
+    if (error instanceof LastfmNotLinkedError) {
+      return { ok: false, message: "No Last.fm account is connected." };
+    }
+    if (error instanceof LastfmUnavailableError) {
+      return {
+        ok: false,
+        message:
+          error.reason === "no-such-user"
+            ? "Last.fm no longer has a profile by that name. Check it in your account settings."
+            : "Last.fm isn't answering right now. Your notes are unaffected.",
+      };
+    }
+    throw error;
+  }
+}
+
+export interface ImportState {
+  error?: string;
+  savedTrack?: string;
+}
+
+/**
+ * Capture a play as a private jot.
+ *
+ * The whole track is accepted alongside its ref because a *now playing* track
+ * has no stored row yet — it is not a play Last.fm has reported. The values are
+ * only ever used to create that row; the recording is resolved from the
+ * identifier, never from what the form said, so a tampered field can at worst
+ * describe a different real song in the user's own private library.
+ */
+export async function importListenAction(
+  _previous: ImportState,
+  formData: FormData,
+): Promise<ImportState> {
+  const user = await requireUser();
+
+  const sourceRef = String(formData.get("sourceRef") ?? "").trim();
+  const body = String(formData.get("body") ?? "").trim();
+  if (!sourceRef) return { error: "Something went wrong reading that play." };
+  if (!body) return { error: "Write something about it first." };
+
+  const trackName = String(formData.get("trackName") ?? "").trim();
+  const artistName = String(formData.get("artistName") ?? "").trim();
+
+  try {
+    await importListen(user.id, {
+      sourceRef,
+      body,
+      track:
+        trackName && artistName
+          ? {
+              trackName,
+              artistName,
+              albumName: String(formData.get("albumName") ?? "").trim() || null,
+              playedAt: null,
+              recordingMbid: String(formData.get("recordingMbid") ?? "").trim() || null,
+              artistMbid: null,
+              albumMbid: null,
+              url: String(formData.get("url") ?? "").trim() || null,
+              sourceRef,
+            }
+          : undefined,
+    });
+  } catch (error) {
+    if (error instanceof LastfmNotLinkedError) {
+      return { error: "That play is no longer available. Refresh and try again." };
+    }
+    throw error;
+  }
+
+  revalidatePath("/notes");
+  return { savedTrack: trackName || "that track" };
+}

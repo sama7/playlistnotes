@@ -14,6 +14,10 @@ import { toDateInputValue } from "@/lib/format-date";
  */
 
 export const DATE_PRECISIONS: Array<{ value: DatePrecision; label: string }> = [
+  // `time` is deliberately absent: a date input collects a day, so offering
+  // "that exact moment" here would let someone claim a precision the form
+  // cannot express. It is set only by a source that reported an instant — a
+  // scrobble — and an edit that keeps the date untouched keeps it.
   { value: "day", label: "That day" },
   { value: "month", label: "That month" },
   { value: "year", label: "That year" },
@@ -34,6 +38,20 @@ export function ExperiencedFields({
       <p className="note">
         Leave this empty for &ldquo;now&rdquo;. A gig in 2011 is dated 2011, not today.
       </p>
+      {/*
+        The instant and precision as stored, so a save that does not touch the
+        date can put them back exactly. Without this, opening the editor on a
+        note imported from a scrobble and pressing Save would quietly round a
+        known minute down to a day — losing precision the user never chose to
+        give up. Read back in `readJournalFields`.
+      */}
+      <input
+        type="hidden"
+        name="experiencedAtOriginal"
+        value={experiencedAt ? new Date(experiencedAt).toISOString() : ""}
+      />
+      <input type="hidden" name="experiencedPrecisionOriginal" value={precision ?? ""} />
+
       <div className="row">
         <div className="field">
           <label htmlFor={`${idPrefix}-experienced`}>Date</label>

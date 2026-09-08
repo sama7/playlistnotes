@@ -83,6 +83,10 @@ const RULES = [
     isPem,
     "a complete PKCS#8 PEM — BOTH begin and end markers, over 200 bytes",
   ],
+  // Optional: its absence is how the Last.fm integration stays feature-flagged
+  // off. Present but malformed is the state worth catching, because the feature
+  // would then appear in the UI and fail at call time.
+  ["LASTFM_API_KEY", false, (v) => /^[0-9a-f]{32}$/i.test(v), "32 hex characters"],
 ];
 
 const env = parseEnv(readFileSync(path, "utf8"));

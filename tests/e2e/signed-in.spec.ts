@@ -226,6 +226,28 @@ test.describe("sharing is deliberate", () => {
   });
 });
 
+/**
+ * The Last.fm integration is feature-flagged on the API key being present, and
+ * the e2e environment deliberately has none. So this asserts the *off* state:
+ * an unconfigured deployment must not mention the integration at all, rather
+ * than offering a control that cannot work.
+ */
+test.describe("an unconfigured integration stays invisible", () => {
+  test("the notes page offers no Last.fm connection when no key is set", async ({ page }) => {
+    test.skip(Boolean(process.env.LASTFM_API_KEY), "A key is configured, so it should appear.");
+
+    await signUp(page, testEmail("nolastfm"));
+    await expect(page.getByRole("heading", { name: /your notes/i })).toBeVisible();
+
+    const body = (await page.locator("body").innerText()).toLowerCase();
+    expect(body).not.toContain("last.fm");
+    expect(body).not.toContain("recently played");
+
+    await page.goto("/account");
+    expect((await page.locator("body").innerText()).toLowerCase()).not.toContain("last.fm");
+  });
+});
+
 test.describe("accessibility of the signed-in surfaces", () => {
   /**
    * The anonymous pages are nearly static; these are where the real complexity

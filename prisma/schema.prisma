@@ -43,9 +43,24 @@ enum Visibility {
 /// date column holds the earliest instant in the stated range; this says how
 /// much of it to believe and therefore how to render it.
 enum DatePrecision {
+  /// A known instant, not just a day. A scrobble reports the second you heard
+  /// something; rounding that to "that day" would discard the one thing a
+  /// listening history is actually authoritative about.
+  time
   day
   month
   year
+}
+
+/// Where a listening record came from.
+///
+/// Deliberately NOT the `Provider` enum. `Provider` answers "who is allowed to
+/// establish the identity of a recording", and Last.fm is excluded from it on
+/// purpose (see the comment there). This answers a different question — "who
+/// told us this was played" — and listening history is a perfectly good answer
+/// to that while being no answer at all to the first.
+enum ListenSource {
+  lastfm
 }
 
 /// How precisely a note's place is recorded.
@@ -139,10 +154,22 @@ model User {
   displayName String? @map("display_name")
   avatarUrl   String? @map("avatar_url")
 
+  /// A Last.fm username, stored as a **source setting, not authentication**
+  /// (AGENTS.md, Last.fm adapter). Nothing is verified about ownership of the
+  /// profile and nothing may depend on it being the same person — it is the
+  /// name of a public feed to read, exactly like typing in a URL. It grants no
+  /// access to anything and is never a login.
+  lastfmUsername String?   @map("lastfm_username")
+  lastfmLinkedAt DateTime? @map("lastfm_linked_at") @db.Timestamptz(6)
+  /// Set when the user waves away the connect prompt, so it is offered once
+  /// rather than nagging on every visit.
+  lastfmPromptDismissedAt DateTime? @map("lastfm_prompt_dismissed_at") @db.Timestamptz(6)
+
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   notes              Note[]
+  listens            Listen[]
   collections        Collection[]
   imports            Import[]
   tags               Tag[]
@@ -333,6 +360,7 @@ model Recording {
   artists         RecordingArtist[]
   externalIds     RecordingExternalId[]
   notes           Note[]
+  listens         Listen[]
   collectionItems CollectionItem[]
 
   @@index([normalizedKey])
@@ -558,6 +586,69 @@ model CollectionItem {
   @@index([collectionId, recordingId, occurrence])
   @@index([recordingId])
   @@map("collection_items")
+}
+
+/// One play, as reported by a listening-history source.
+///
+/// **Listens are kept separate from recordings, and that is the whole point.**
+/// A recording is "this song exists"; a listen is "you heard it, at 7:39pm on a
+/// Tuesday". Collapsing the second into the first would make the tenth play
+/// indistinguishable from the first, and repeated listening is exactly the
+/// signal a music journal is trying to catch.
+///
+/// It is also a **cache with provenance**, not a mirror. The raw strings the
+/// source reported are stored verbatim alongside any MusicBrainz ids it
+/// supplied, so that if a source later turns out to have mis-identified
+/// something, every row it influenced can be found and unwound. Last.fm is not
+/// permitted to establish recording identity (AGENTS.md), so what it says is
+/// recorded as *what it said*, not as truth.
+model Listen {
+  id      String @id @default(uuid()) @db.Uuid
+  ownerId String @map("owner_id") @db.Uuid
+
+  source ListenSource
+
+  /// The source's own identity for this play. Last.fm issues no scrobble id, so
+  /// this is derived from the play instant plus the track — see
+  /// `lib/music/lastfm/client.ts`. Unique per owner, which makes re-syncing the
+  /// same window idempotent instead of duplicating a person's history.
+  sourceRef String  @map("source_ref")
+  sourceUrl String? @map("source_url")
+
+  /// When it was played. The reason this integration exists.
+  playedAt DateTime @map("played_at") @db.Timestamptz(6)
+
+  /// Exactly what the source said, unparsed and unmerged. These are display and
+  /// provenance data; no entity is ever created from them (AGENTS.md §3a).
+  trackName  String  @map("track_name")
+  artistName String  @map("artist_name")
+  albumName  String? @map("album_name")
+
+  /// MusicBrainz ids when the source supplied them — frequently empty, which is
+  /// expected rather than an error. An MBID is issued by an authority and is a
+  /// trusted `Provider`; the *association* between this play and that id is
+  /// merely asserted by the source, which is why it is stored here as
+  /// provenance and not silently promoted.
+  recordingMbid String? @map("recording_mbid")
+  artistMbid    String? @map("artist_mbid")
+  albumMbid     String? @map("album_mbid")
+
+  /// Set once the user pulls this play into their library. Null means seen but
+  /// not adopted — the common case, since most of what you hear is not worth a
+  /// note.
+  recordingId String?   @map("recording_id") @db.Uuid
+  importedAt  DateTime? @map("imported_at") @db.Timestamptz(6)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  owner     User       @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  recording Recording? @relation(fields: [recordingId], references: [id], onDelete: SetNull)
+
+  /// Re-reading the same window must update rather than duplicate.
+  @@unique([ownerId, source, sourceRef])
+  @@index([ownerId, playedAt(sort: Desc)])
+  @@index([recordingId])
+  @@map("listens")
 }
 
 model Import {

@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { requireUser } from "@/lib/auth";
+import { toDateInputValue } from "@/lib/format-date";
 import { DatePrecision, PlacePrecision, Visibility } from "@prisma/client";
 import {
   NoteNotFoundError,
@@ -50,15 +51,32 @@ export async function updateNoteAction(noteId: string, formData: FormData): Prom
  * Two details do real work here. The date arrives as `YYYY-MM-DD` from a date
  * input and is **anchored to the first instant of the stated range** — a note
  * marked "that year" is stored as January 1st — because the precision, not the
- * timestamp, is what the product promises to render. And `placePrecision` is a
- * checkbox, so its absence means `area`: opting out of precision has to be the
- * thing that happens when nobody does anything.
+ * timestamp, is what the product promises to render.
  */
 function readJournalFields(formData: FormData) {
   const rawDate = String(formData.get("experiencedAt") ?? "").trim();
   const rawPrecision = String(formData.get("experiencedPrecision") ?? "day");
   const precision: DatePrecision =
     rawPrecision === "year" || rawPrecision === "month" ? rawPrecision : DatePrecision.day;
+
+  /**
+   * A note imported from a scrobble knows the minute it was heard, and the date
+   * input can only express a day. If the day has not been edited, the stored
+   * instant is put back untouched — otherwise merely opening the editor and
+   * saving would round a known time down to a date, discarding precision the
+   * writer never chose to give up.
+   */
+  const originalIso = String(formData.get("experiencedAtOriginal") ?? "").trim();
+  if (originalIso && String(formData.get("experiencedPrecisionOriginal") ?? "") === "time") {
+    const original = new Date(originalIso);
+    if (!Number.isNaN(original.getTime()) && toDateInputValue(original) === rawDate) {
+      return {
+        experiencedAt: original,
+        experiencedPrecision: DatePrecision.time,
+        ...readPlaceFields(formData),
+      };
+    }
+  }
 
   let experiencedAt: Date | null = null;
   if (rawDate) {
@@ -71,12 +89,19 @@ function readJournalFields(formData: FormData) {
     experiencedAt = new Date(Date.UTC(y ?? 1970, month - 1, day, 12));
   }
 
-  const placeLabel = String(formData.get("placeLabel") ?? "").trim() || null;
-  const exact = formData.get("placePrecision") === "exact";
-
   return {
     experiencedAt,
     experiencedPrecision: experiencedAt ? precision : null,
+    ...readPlaceFields(formData),
+  };
+}
+
+/** `placePrecision` is a checkbox, so its absence means `area`: opting out of
+ *  precision has to be what happens when nobody does anything. */
+function readPlaceFields(formData: FormData) {
+  const placeLabel = String(formData.get("placeLabel") ?? "").trim() || null;
+  const exact = formData.get("placePrecision") === "exact";
+  return {
     placeLabel,
     placePrecision: placeLabel ? (exact ? PlacePrecision.exact : PlacePrecision.area) : null,
   };

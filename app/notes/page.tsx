@@ -10,7 +10,9 @@ import {
 import { toNoteRow } from "@/lib/notes/list";
 import { searchNotes } from "@/lib/notes/search";
 import { listTags } from "@/lib/notes/tags";
+import { lastfmConfigured } from "@/lib/music/lastfm/client";
 import { BrowseBar } from "./browse-bar";
+import { LastfmPrompt, Scrobbles } from "./scrobbles";
 import { CaptureForm } from "./capture-form";
 import { NoteRow } from "./note-row";
 import { TagBar } from "./tag-bar";
@@ -106,6 +108,19 @@ export default async function NotesPage({
         <p role="alert" className="error">
           {importError}
         </p>
+      )}
+
+      {/*
+        The listening strip and the offer to connect one are both gated on the
+        server having a Last.fm API key: the integration is feature-flagged, so
+        a deployment without one never mentions it. Neither blocks this page —
+        `Scrobbles` fetches itself after render.
+      */}
+      {lastfmConfigured() && user.lastfmUsername && (
+        <Scrobbles username={user.lastfmUsername} />
+      )}
+      {lastfmConfigured() && !user.lastfmUsername && !user.lastfmPromptDismissedAt && (
+        <LastfmPrompt />
       )}
 
       <CaptureForm />

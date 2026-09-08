@@ -38,6 +38,16 @@ const YEAR = new Intl.DateTimeFormat(LOCALE, {
   timeZone: DISPLAY_TIME_ZONE,
 });
 
+/** "Sep 8, 2026 at 7:39 PM" — for an instant a source actually reported. */
+const INSTANT = new Intl.DateTimeFormat(LOCALE, {
+  month: "short",
+  day: "numeric",
+  year: "numeric",
+  hour: "numeric",
+  minute: "2-digit",
+  timeZone: DISPLAY_TIME_ZONE,
+});
+
 /** "Aug 17, 2026" */
 export function formatDay(value: Date | string): string {
   return DAY.format(new Date(value));
@@ -59,6 +69,10 @@ export function formatNumericDay(value: Date | string): string {
  * The column holds the first instant of the stated range, so a year-precision
  * note is stored as January 1st. Printing that as "Jan 1, 2011" would invent a
  * day the writer never said, which is why the precision travels with the date.
+ *
+ * `time` is the opposite case and arrives from listening history: the source
+ * reported a specific minute, so showing only the day would discard precision
+ * that was actually known.
  */
 export function formatExperienced(
   value: Date | string | null,
@@ -68,6 +82,9 @@ export function formatExperienced(
   const date = new Date(value);
   if (precision === "year") return YEAR.format(date);
   if (precision === "month") return MONTH.format(date);
+  // A scrobble knows the minute. Rounding that to a day would throw away the
+  // one thing a listening history is genuinely authoritative about.
+  if (precision === "time") return INSTANT.format(date);
   return DAY.format(date);
 }
 

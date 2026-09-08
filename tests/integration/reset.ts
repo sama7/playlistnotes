@@ -12,6 +12,8 @@ import type { PrismaClient } from "@prisma/client";
 export async function resetDatabase(prisma: PrismaClient): Promise<void> {
   await prisma.noteTag.deleteMany();
   await prisma.note.deleteMany();
+  // Before recordings: a listen references the recording it was imported into.
+  await prisma.listen.deleteMany();
   await prisma.collectionItem.deleteMany();
   await prisma.collection.deleteMany();
   await prisma.import.deleteMany();

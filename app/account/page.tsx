@@ -1,6 +1,8 @@
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { formatDay } from "@/lib/format-date";
+import { lastfmConfigured } from "@/lib/music/lastfm/client";
+import { LastfmForm } from "./lastfm-form";
 import { UsernameForm } from "./username-form";
 
 /**
@@ -33,6 +35,15 @@ export default async function AccountPage() {
 
       <h2>Username</h2>
       <UsernameForm current={user.username} />
+
+      {/* Feature-flagged on the API key: an unconfigured deployment never
+          mentions Last.fm at all. */}
+      {lastfmConfigured() && (
+        <>
+          <h2>Listening history</h2>
+          <LastfmForm current={user.lastfmUsername} />
+        </>
+      )}
 
       <h2>Your notes are yours</h2>
       <p className="note">

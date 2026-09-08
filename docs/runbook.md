@@ -23,6 +23,22 @@ processes, files, databases, and vhosts.
 | Backups | `/var/backups/trackjot/{hourly,daily}` |
 | Backup log | `/var/log/tj-backup.log`, last result in `/var/lib/tj-backup/last-status` |
 
+## Last.fm
+
+Optional, and off unless `LASTFM_API_KEY` is set — that absence is the feature
+flag, so an unconfigured deployment never mentions the integration. Get a key
+from <https://www.last.fm/api/account/create> (read-only endpoints; no callback
+URL). Add it to `/srv/trackjot/current/.env` and restart:
+
+```bash
+ssh root@<droplet> 'printf "LASTFM_API_KEY=%s\n" "<key>" >> /srv/trackjot/current/.env'
+ssh root@<droplet> 'cd /srv/trackjot/current && /opt/node24/bin/node scripts/check-env.mjs .env'
+ssh root@<droplet> 'pm2 restart trackjot --update-env'
+```
+
+It is a **server-side key only** — it must never be `NEXT_PUBLIC_*`, or it ships
+in the browser bundle for anyone to lift.
+
 ## Backfilling cover art
 
 Artwork is captured at **import time**, so anything written before the artwork
