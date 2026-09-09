@@ -10,7 +10,7 @@ import {
 import { toNoteRow } from "@/lib/notes/list";
 import { searchNotes } from "@/lib/notes/search";
 import { listTags } from "@/lib/notes/tags";
-import { lastfmConfigured } from "@/lib/music/lastfm/client";
+import { lastfmAuthConfigured, lastfmConfigured } from "@/lib/music/lastfm/client";
 import { BrowseBar } from "./browse-bar";
 import { LastfmPrompt, Scrobbles } from "./scrobbles";
 import { CaptureForm } from "./capture-form";
@@ -119,7 +119,12 @@ export default async function NotesPage({
       {lastfmConfigured() && user.lastfmUsername && (
         <Scrobbles username={user.lastfmUsername} />
       )}
-      {lastfmConfigured() && !user.lastfmUsername && !user.lastfmPromptDismissedAt && (
+      {/*
+        Gated on the *auth* flag, not merely the key: connecting is the only
+        thing this prompt offers, so a server that cannot complete an approval
+        must not invite one and then dead-end.
+      */}
+      {lastfmAuthConfigured() && !user.lastfmUsername && !user.lastfmPromptDismissedAt && (
         <LastfmPrompt />
       )}
 
