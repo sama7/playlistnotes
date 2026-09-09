@@ -62,11 +62,23 @@ export async function recentListensAction(): Promise<RecentState> {
        * explain, which is "reconnect".
        */
       if (error.reason === "bad-session") {
+        /**
+         * The key is dropped and the read retried **once, publicly**. A revoked
+         * key makes even a public profile fail while it is still stored, so
+         * without the retry the user would see an error on this visit and
+         * silently working plays on the next — which reads as a glitch. The
+         * retry turns the common case into a seamless degrade, and leaves a
+         * genuine "reconnect" message only for the profiles that need one.
+         */
         await invalidateLastfmSession(user.id);
-        return {
-          ok: false,
-          message: "Your Last.fm connection was revoked. Reconnect it from your account.",
-        };
+        try {
+          return { ok: true, listens: await syncRecentListens(user.id, 10) };
+        } catch {
+          return {
+            ok: false,
+            message: "Your Last.fm connection was revoked. Reconnect it from your account.",
+          };
+        }
       }
       if (error.reason === "login-required") {
         return {

@@ -167,6 +167,32 @@ describe("reading as the connected account", () => {
     expect(seen!.searchParams.get("sk")).toBeNull();
   });
 
+  /**
+   * A revoked key makes even a public profile fail while it is still stored.
+   * Clearing it must leave the account in a state that works, not one that
+   * errors until the next visit.
+   */
+  it("clears a rejected key, leaving the next read able to succeed publicly", async () => {
+    const user = await prisma.user.create({
+      data: {
+        authSubject: `s_${crypto.randomUUID()}`,
+        lastfmUsername: "samah-",
+        lastfmSessionKey: "revoked-key",
+      },
+    });
+
+    vi.stubGlobal("fetch", (async (url: URL) =>
+      url.searchParams.get("sk")
+        ? new Response(JSON.stringify({ error: 9, message: "Invalid session key" }), { status: 403 })
+        : new Response(JSON.stringify({ recenttracks: { track: [play()] } }))) as unknown as typeof fetch);
+
+    await expect(syncRecentListens(user.id)).rejects.toMatchObject({ reason: "bad-session" });
+    await invalidateLastfmSession(user.id);
+
+    // With the dead key gone, the very same feed reads publicly.
+    await expect(syncRecentListens(user.id)).resolves.toHaveLength(1);
+  });
+
   it("makes an ordinary public read when there is no session key", async () => {
     const user = await makeUser();
     let seen: URL | null = null;

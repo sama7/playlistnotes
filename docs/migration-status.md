@@ -1191,12 +1191,27 @@ Verified against the **live** API with the real key: `samah-` returns plays with
 timestamps preserved and `womenaresmarter` returns `login-required`, which is the
 case the approval flow exists to solve.
 
-### Blocked on `LASTFM_SHARED_SECRET`
+### Verifying the signature without a browser round trip
 
-`LASTFM_API_KEY` is configured; **the shared secret is not**, and signing is
-impossible without it. So the approval flow itself — redirect, approve, exchange,
-signed read — has not been exercised end to end. It is on the same page the key
-came from: <https://www.last.fm/api/accounts>.
+The approval step itself needs a person to click "yes" on Last.fm's site, which
+no test can do. Two probes against the live API established the rest, and both
+turn on **which error code comes back**, since a wrong secret and a wrong
+signing format are otherwise indistinguishable:
+
+| Probe | Result | What it proves |
+| --- | --- | --- |
+| `auth.getSession` with the real secret and a junk token | `error: 4` — "token has not been issued" | The **signature was accepted**; only the token was rejected. Signing format is correct. (With a dummy secret the same call returns `error: 13`.) |
+| A signed `user.getrecenttracks` with a junk session key | `error: 9` — "invalid session key" | `sk` is **evaluated** by this method rather than ignored, and the signature validated. A real key has a genuine mechanism to work through. |
+
+That leaves only the browser approval itself unexercised, and its failure mode
+is graceful: a profile that cannot be read signed falls back to a public read,
+which works for every profile that hides nothing.
+
+**A revoked key no longer surfaces as an error.** While a dead key is still
+stored, even a public profile fails — so the action drops the key and retries
+once publicly. The user sees working plays instead of an error that would have
+fixed itself by the next visit, and a genuine "reconnect" message survives only
+for profiles that actually need one.
 
 One key and secret serve every environment: the callback is passed per request
 from `APP_BASE_URL`, so localhost and production differ only in that value.
