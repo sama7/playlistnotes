@@ -1285,6 +1285,43 @@ honoured, and a form carrying a false title, artist and image URL still yields
 Apple's own facts — plus the fallbacks: no confirmation stays creator-scoped,
 and a provider that will not answer still writes the note.
 
+## A fieldset spilling off a phone — 2026-09-09
+
+The match picker rendered 421px wide inside a 402px viewport, cutting off the
+explanation, the provider line and the opt-out.
+
+**The cause is worth remembering because it will recur.** A `fieldset` carries
+an intrinsic `min-width: min-content` that no other element has, and refuses to
+shrink past it inside a flex parent. The form wrapping it is a flex item with
+`flex-basis: 100%`, whose own default `min-width: auto` also refuses to shrink
+below its content — so the fieldset's min-content became the row's width and the
+card left the screen. The opt-out is now stated on `fieldset` generally, not on
+the one form, because the next fieldset in a flex layout would do the same.
+
+Two copy consequences: the provider line reads "within 0.9s" rather than "length
+matches within 0.9s" (it sits beside a 44px cover in a ~265px column and was
+first to be ellipsed), and the "None of these" description no longer truncates —
+every other line in a row is metadata where an ellipsis still lets you tell
+releases apart, but that one is prose and clipping it hid what the choice does.
+
+`tests/e2e/narrow-layout.spec.ts` mounts the real markup against the real
+stylesheet and measures the spill at 402px and 320px, naming the widest
+offender when it fails. It deliberately does **not** drive the app: reproducing
+this through the product needs a signed-in account, a connected Last.fm and
+fresh scrobbles — conditions a test cannot conjure and nobody should have to
+recreate to discover a card is off the screen. This is the second
+horizontal-overflow bug in the project; the collection tracklist was the first.
+
+```
+npm test                                 170 passed
+npm run test:integration                 218 passed
+npm run test:e2e                          43 passed  (+6 layout)
+```
+
+Verified after deploying that the served stylesheet actually contains
+`fieldset{min-width:0}` — the fix being in the repository is not the same as the
+fix being on the page.
+
 ## What is left before a public release
 
 | # | Work | Est. | Blocked? |
