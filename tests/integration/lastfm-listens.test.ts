@@ -453,3 +453,155 @@ describe("the note a play becomes", () => {
     expect(listens[0]!.importedAt).not.toBeNull();
   });
 });
+
+/**
+ * Confirming a provider match for a play that arrived with no identifier.
+ *
+ * This is the path that turns a nameless scrobble into a real recording with
+ * artwork, and it is where the catalog policy is genuinely at stake: a name
+ * search suggested it, so nothing may be created until a person agrees, and
+ * what anchors the row must be the provider's identifier rather than anything
+ * the browser sent.
+ */
+describe("confirming a provider match", () => {
+  const APPLE_ID = "1574601348";
+
+  async function playedWithNoMbid() {
+    const user = await makeUser();
+    vi.stubGlobal("fetch", lastfmResponse([play()]));
+    await syncRecentListens(user.id);
+    const listen = await prisma.listen.findFirstOrThrow({ where: { ownerId: user.id } });
+    return { user, listen };
+  }
+
+  /** Apple's lookup, as `captureFromProviderRef` will re-read it. */
+  function appleLookup() {
+    vi.stubGlobal("fetch", (async () =>
+      new Response(
+        JSON.stringify({
+          resultCount: 1,
+          results: [
+            {
+              wrapperType: "track",
+              kind: "song",
+              trackId: Number(APPLE_ID),
+              trackName: "Rasiya",
+              artistId: 1,
+              artistName: "Anyasa",
+              collectionId: 1574601347,
+              collectionName: "Rasiya",
+              trackTimeMillis: 228865,
+              trackNumber: 1,
+              releaseDate: "2021-07-16T07:00:00Z",
+              artworkUrl100: "https://is1-ssl.mzstatic.com/image/thumb/x/100x100bb.jpg",
+            },
+          ],
+        }),
+      )) as unknown as typeof fetch);
+  }
+
+  it("anchors the recording to the confirmed identifier, with artwork", async () => {
+    const { user, listen } = await playedWithNoMbid();
+    appleLookup();
+
+    await importListen(user.id, {
+      sourceRef: listen.sourceRef,
+      body: "confirmed it myself",
+      confirmed: { provider: Provider.apple_music, providerId: APPLE_ID },
+    });
+
+    const external = await prisma.recordingExternalId.findUniqueOrThrow({
+      where: { provider_providerId: { provider: Provider.apple_music, providerId: APPLE_ID } },
+      include: { recording: true },
+    });
+    expect(external.recording.origin).toBe(RecordingOrigin.provider);
+    // The grey square problem: a confirmed match brings art we may show.
+    expect(external.recording.artworkUrl).toContain("mzstatic.com");
+  });
+
+  /**
+   * The security property. Only the provider and id are honoured; the title,
+   * album and artwork are re-read from the provider, so a tampered form cannot
+   * inject a name or an image URL.
+   */
+  it("takes its facts from the provider, not from the caller", async () => {
+    const { user, listen } = await playedWithNoMbid();
+    appleLookup();
+
+    await importListen(user.id, {
+      sourceRef: listen.sourceRef,
+      body: "tampered",
+      confirmed: { provider: Provider.apple_music, providerId: APPLE_ID },
+      track: {
+        trackName: "NOT THE REAL TITLE",
+        artistName: "NOT THE REAL ARTIST",
+        albumName: null,
+        playedAt: null,
+        recordingMbid: null,
+        artistMbid: null,
+        albumMbid: null,
+        url: "https://evil.example/beacon.png",
+        sourceRef: listen.sourceRef,
+      },
+    });
+
+    const recording = await prisma.recording.findFirstOrThrow({
+      where: { externalIds: { some: { providerId: APPLE_ID } } },
+    });
+    expect(recording.title).toBe("Rasiya");
+    expect(recording.artistDisplay).toBe("Anyasa");
+    expect(JSON.stringify(recording)).not.toContain("evil.example");
+  });
+
+  it("leaves the play creator-scoped when the user confirms nothing", async () => {
+    const { user, listen } = await playedWithNoMbid();
+
+    await importListen(user.id, { sourceRef: listen.sourceRef, body: "none of those" });
+
+    const recording = await prisma.recording.findFirstOrThrow({ where: { title: "CN TOWER" } });
+    expect(recording.origin).toBe(RecordingOrigin.user);
+    expect(await prisma.recordingExternalId.count()).toBe(0);
+  });
+
+  /** A provider that cannot confirm its own id must not cost someone their note. */
+  it("still writes the note when the provider will not answer", async () => {
+    const { user, listen } = await playedWithNoMbid();
+    vi.stubGlobal("fetch", (async () => new Response("{}", { status: 500 })) as unknown as typeof fetch);
+
+    await importListen(user.id, {
+      sourceRef: listen.sourceRef,
+      body: "written regardless",
+      confirmed: { provider: Provider.apple_music, providerId: APPLE_ID },
+    });
+
+    const note = await prisma.note.findFirstOrThrow({ where: { ownerId: user.id } });
+    expect(note.body).toBe("written regardless");
+    // Fell back to creator-scoped rather than failing.
+    expect(await prisma.recordingExternalId.count()).toBe(0);
+  });
+
+  it("files two people's confirmations of the same track as one recording", async () => {
+    const [alice, bob] = await Promise.all([makeUser(), makeUser()]);
+    vi.stubGlobal("fetch", lastfmResponse([play()]));
+    await syncRecentListens(alice.id);
+    await syncRecentListens(bob.id);
+    const hers = await prisma.listen.findFirstOrThrow({ where: { ownerId: alice.id } });
+    const his = await prisma.listen.findFirstOrThrow({ where: { ownerId: bob.id } });
+
+    appleLookup();
+    await importListen(alice.id, {
+      sourceRef: hers.sourceRef,
+      body: "alice",
+      confirmed: { provider: Provider.apple_music, providerId: APPLE_ID },
+    });
+    await importListen(bob.id, {
+      sourceRef: his.sourceRef,
+      body: "bob",
+      confirmed: { provider: Provider.apple_music, providerId: APPLE_ID },
+    });
+
+    // The point of acquiring an identifier: one shared row, two private notes.
+    expect(await prisma.recording.count()).toBe(1);
+    expect(await prisma.note.count()).toBe(2);
+  });
+});

@@ -4,7 +4,10 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { formatExperienced } from "@/lib/format-date";
 import type { ListenView } from "@/lib/listens/service";
+import { CoverArt } from "@/components/cover-art";
+import type { TrackCandidate } from "@/lib/music/match-track";
 import {
+  candidatesAction,
   dismissLastfmPromptAction,
   importListenAction,
   recentListensAction,
@@ -139,6 +142,29 @@ export function Scrobbles({ username }: { username: string }) {
 function ScrobbleJot({ listen, onDone }: { listen: ListenView; onDone: () => void }) {
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [candidates, setCandidates] = useState<TrackCandidate[] | null>(null);
+  /** Index into `candidates`, or -1 for "none of these". Best match preselected. */
+  const [chosen, setChosen] = useState(0);
+
+  /**
+   * Suggestions are fetched when the editor opens, not with the strip. Ten rows
+   * would mean ten lookups against somebody else's rate limit to answer a
+   * question nobody asked.
+   */
+  useEffect(() => {
+    let cancelled = false;
+    candidatesAction({ trackName: listen.trackName, artistName: listen.artistName }).then(
+      (found) => {
+        if (!cancelled) setCandidates(found);
+      },
+      () => {
+        if (!cancelled) setCandidates([]);
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [listen.trackName, listen.artistName]);
 
   async function save(formData: FormData) {
     setSaving(true);
@@ -147,6 +173,8 @@ function ScrobbleJot({ listen, onDone }: { listen: ListenView; onDone: () => voi
     if (result.error) setError(result.error);
     else onDone();
   }
+
+  const pick = candidates && chosen >= 0 ? candidates[chosen] : null;
 
   return (
     <form action={save} className="scrobble-jot inline-edit">
@@ -157,6 +185,67 @@ function ScrobbleJot({ listen, onDone }: { listen: ListenView; onDone: () => voi
       <input type="hidden" name="artistName" value={listen.artistName} />
       <input type="hidden" name="albumName" value={listen.albumName ?? ""} />
       <input type="hidden" name="url" value={listen.url ?? ""} />
+      {/* Only the identifier travels. Everything else is re-read server-side
+          from the provider, so this cannot inject a title or an image URL. */}
+      <input type="hidden" name="confirmedProvider" value={pick?.provider ?? ""} />
+      <input type="hidden" name="confirmedId" value={pick?.providerId ?? ""} />
+
+      {candidates === null && <p className="note">Looking for this on Apple Music and Spotify…</p>}
+
+      {candidates !== null && candidates.length > 0 && (
+        <fieldset className="sub-fields match-picker">
+          <legend>Is this the one?</legend>
+          <p className="note">
+            Last.fm didn&rsquo;t include an identifier for this play. Confirming a match
+            gets you the cover art and links, and files it alongside the same track from
+            anywhere else. Nothing is matched for you.
+          </p>
+
+          {candidates.map((candidate, index) => (
+            <label key={`${candidate.provider}:${candidate.providerId}`} className="match">
+              <input
+                type="radio"
+                name="candidate"
+                checked={chosen === index}
+                onChange={() => setChosen(index)}
+              />
+              <CoverArt
+                url={candidate.artwork.thumbUrl}
+                fullUrl={candidate.artwork.url}
+                size={44}
+                title={candidate.title}
+              />
+              <span className="match-text">
+                <strong>{candidate.title}</strong>
+                <span className="note">
+                  {candidate.artistName}
+                  {candidate.albumName ? ` · ${candidate.albumName}` : ""}
+                </span>
+                <span className="note">
+                  {candidate.provider === "apple_music" ? "Apple Music" : "Spotify"}
+                  {candidate.durationDeltaMs !== null &&
+                    ` · length matches within ${(candidate.durationDeltaMs / 1000).toFixed(1)}s`}
+                </span>
+              </span>
+            </label>
+          ))}
+
+          <label className="match">
+            <input
+              type="radio"
+              name="candidate"
+              checked={chosen === -1}
+              onChange={() => setChosen(-1)}
+            />
+            <span className="match-text">
+              <strong>None of these</strong>
+              <span className="note">
+                Keep it as your own entry — private to you, and no cover art.
+              </span>
+            </span>
+          </label>
+        </fieldset>
+      )}
 
       <label className="visually-hidden" htmlFor={`jot-${listen.sourceRef}`}>
         Your note about {listen.trackName}
@@ -183,9 +272,8 @@ function ScrobbleJot({ listen, onDone }: { listen: ListenView; onDone: () => voi
           Cancel
         </button>
         <span className="note">
-          Dated{" "}
-          {listen.playedAt ? formatExperienced(listen.playedAt, "time") : "now"}
-          {listen.identified ? "" : " · no MusicBrainz id, so this stays private to you"}
+          Dated {listen.playedAt ? formatExperienced(listen.playedAt, "time") : "now"}
+          {pick ? "" : " · stays private to you"}
         </span>
       </div>
     </form>

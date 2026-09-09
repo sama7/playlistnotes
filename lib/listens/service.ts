@@ -7,6 +7,9 @@ import {
   type RecentTrack,
 } from "@/lib/music/lastfm/client";
 import { createUserAuthoredRecording, resolveByProviderId } from "@/lib/music/resolve-recording";
+import { captureFromProviderRef } from "@/lib/music/capture-track";
+import { findTrackCandidates, type TrackCandidate } from "@/lib/music/match-track";
+import { fetchTrackInfo } from "@/lib/music/lastfm/client";
 import { createNote } from "@/lib/notes/service";
 
 /**
@@ -263,6 +266,30 @@ async function viewFor(userId: string, tracks: RecentTrack[]): Promise<ListenVie
 }
 
 /**
+ * Offer provider matches for a play, so it need not stay nameless.
+ *
+ * Run when someone starts writing, never for the whole strip: it costs a
+ * `track.getInfo` and two searches, and doing that for ten rows on every page
+ * load would spend a great deal of somebody else's rate limit to answer a
+ * question nobody asked.
+ *
+ * Last.fm's duration is what makes the suggestions defensible rather than
+ * hopeful — it is frequently present even when the mbid is not, and it
+ * separates an original from its extended mix decisively.
+ */
+export async function candidatesForListen(
+  userId: string,
+  input: { trackName: string; artistName: string },
+): Promise<TrackCandidate[]> {
+  const info = await fetchTrackInfo(input.artistName, input.trackName);
+  return findTrackCandidates({
+    title: input.trackName,
+    artistName: input.artistName,
+    durationMs: info.durationMs,
+  });
+}
+
+/**
  * Turn one play into a recording and a private jot about it.
  *
  * The listening instant becomes the note's `experiencedAt` at `time`
@@ -271,7 +298,17 @@ async function viewFor(userId: string, tracks: RecentTrack[]): Promise<ListenVie
  */
 export async function importListen(
   userId: string,
-  input: { sourceRef: string; body: string; track?: RecentTrack },
+  input: {
+    sourceRef: string;
+    body: string;
+    track?: RecentTrack;
+    /**
+     * A provider match the user looked at and confirmed. Only the provider and
+     * its id are honoured — everything else is re-read from the provider, so a
+     * tampered field cannot inject a title, an album, or an artwork URL.
+     */
+    confirmed?: { provider: Provider; providerId: string } | null;
+  },
 ): Promise<{ noteId: string }> {
   let listen = await prisma.listen.findUnique({
     where: {
@@ -309,7 +346,8 @@ export async function importListen(
 
   if (!listen) throw new LastfmNotLinkedError();
 
-  const recordingId = listen.recordingId ?? (await resolveRecordingFor(userId, listen)).id;
+  const recordingId =
+    listen.recordingId ?? (await resolveRecordingFor(userId, listen, input.confirmed)).id;
 
   const note = await createNote(userId, {
     recordingId,
@@ -327,7 +365,28 @@ export async function importListen(
 }
 
 /** The fork described at the top of this file: identifier, or creator-scoped. */
-async function resolveRecordingFor(userId: string, listen: Listen) {
+async function resolveRecordingFor(
+  userId: string,
+  listen: Listen,
+  confirmed?: { provider: Provider; providerId: string } | null,
+) {
+  /**
+   * A match the user confirmed. Resolved through the ordinary capture path,
+   * which **re-reads the track from the provider by id** — so the recording,
+   * its artists, its album and its artwork all come from the provider rather
+   * than from anything the browser sent. The confirmation supplies an
+   * identifier; it does not supply facts.
+   *
+   * This is §3a.5's "identifier acquisition": a name search suggested it, a
+   * person agreed, and what anchors the row is the provider's own id.
+   */
+  if (confirmed) {
+    const capture = await captureFromProviderRef(confirmed.provider, confirmed.providerId);
+    if (capture.ok) return capture.recording;
+    // The provider could not confirm its own id; fall through rather than fail
+    // the note. Somebody is mid-sentence.
+  }
+
   if (listen.recordingMbid) {
     const resolved = await resolveByProviderId({
       provider: Provider.musicbrainz,

@@ -3,8 +3,11 @@
 import { revalidatePath } from "next/cache";
 import { requireUser } from "@/lib/auth";
 import { LastfmUnavailableError } from "@/lib/music/lastfm/client";
+import { Provider } from "@prisma/client";
+import type { TrackCandidate } from "@/lib/music/match-track";
 import {
   LastfmNotLinkedError,
+  candidatesForListen,
   dismissLastfmPrompt,
   importListen,
   invalidateLastfmSession,
@@ -96,6 +99,25 @@ export async function recentListensAction(): Promise<RecentState> {
   }
 }
 
+/**
+ * Suggest provider matches for a play the user is about to write about.
+ *
+ * Deliberately its own round trip, fired when they open the editor rather than
+ * when the strip renders — see `candidatesForListen`.
+ */
+export async function candidatesAction(input: {
+  trackName: string;
+  artistName: string;
+}): Promise<TrackCandidate[]> {
+  const user = await requireUser();
+  try {
+    return await candidatesForListen(user.id, input);
+  } catch {
+    // No suggestions is a fine outcome. A note must never be blocked on one.
+    return [];
+  }
+}
+
 export interface ImportState {
   error?: string;
   savedTrack?: string;
@@ -124,10 +146,24 @@ export async function importListenAction(
   const trackName = String(formData.get("trackName") ?? "").trim();
   const artistName = String(formData.get("artistName") ?? "").trim();
 
+  /**
+   * The match the user confirmed, if any. Only the provider and id are read —
+   * both validated here — because everything else about the track is re-read
+   * from the provider itself. A tampered form can at worst name a different
+   * real track in the user's own private library.
+   */
+  const confirmedProvider = String(formData.get("confirmedProvider") ?? "");
+  const confirmedId = String(formData.get("confirmedId") ?? "").trim();
+  const confirmed =
+    confirmedId && Object.values(Provider).includes(confirmedProvider as Provider)
+      ? { provider: confirmedProvider as Provider, providerId: confirmedId }
+      : null;
+
   try {
     await importListen(user.id, {
       sourceRef,
       body,
+      confirmed,
       track:
         trackName && artistName
           ? {

@@ -358,3 +358,57 @@ export async function fetchPlaylist(
     truncated: pages >= MAX_PAGES,
   };
 }
+
+/** One possible match, as Spotify describes it. Nothing is resolved yet. */
+export interface SpotifySearchResult {
+  providerId: string;
+  title: string;
+  artistName: string;
+  albumName: string | null;
+  durationMs: number | null;
+  artwork: Artwork;
+  providerUrl: string | null;
+}
+
+/**
+ * Search Spotify's catalog by text.
+ *
+ * The same role as `searchAppleTracks`: a **suggestion** to put in front of a
+ * person, never an identity. Client Credentials authenticates the application,
+ * so this costs nothing against the five-user cap.
+ *
+ * Returns nothing rather than throwing when Spotify is unconfigured or
+ * unavailable — a missing suggestion must never block a note.
+ */
+export async function searchSpotifyTracks(
+  term: string,
+  limit = 5,
+  fetchImpl: typeof fetch = fetch,
+): Promise<SpotifySearchResult[]> {
+  if (!spotifyConfigured()) return [];
+
+  try {
+    const params = new URLSearchParams({
+      q: term,
+      type: "track",
+      limit: String(Math.min(Math.max(limit, 1), 25)),
+    });
+    const body = await apiGet<{
+      tracks?: { items?: Array<RawTrack & { album?: { images?: SpotifyImage[] } }> };
+    }>(`/search?${params}`, fetchImpl);
+
+    return (body.tracks?.items ?? [])
+      .filter((t): t is typeof t & { id: string; name: string } => Boolean(t.id && t.name))
+      .map((t) => ({
+        providerId: t.id,
+        title: t.name,
+        artistName: t.artists?.map((a) => a.name).join(", ") ?? "",
+        albumName: t.album?.name ?? null,
+        durationMs: t.duration_ms ?? null,
+        artwork: fromSpotifyImages(t.album?.images),
+        providerUrl: `https://open.spotify.com/track/${t.id}`,
+      }));
+  } catch {
+    return [];
+  }
+}

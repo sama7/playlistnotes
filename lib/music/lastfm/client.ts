@@ -385,3 +385,49 @@ export async function exchangeToken(
   }
   return { username, sessionKey };
 }
+
+/** What `track.getInfo` adds beyond a scrobble: a duration, sometimes an mbid. */
+export interface LastfmTrackInfo {
+  durationMs: number | null;
+  recordingMbid: string | null;
+  albumName: string | null;
+}
+
+/**
+ * Ask Last.fm what it knows about one track.
+ *
+ * The recent-tracks feed is sparse — for many scrobbles it carries no
+ * MusicBrainz id at all. This call frequently supplies a **duration**, and a
+ * duration is what turns a name search into a defensible match: for
+ * "Anyasa — Rasiya" it reports 228000ms, which is 865ms from the real track and
+ * three *minutes* from the extended mix that shares its name.
+ *
+ * Returns nulls rather than throwing when Last.fm cannot answer. This runs while
+ * someone is trying to write something down, and a missing hint must never be
+ * the reason a note does not get written.
+ */
+export async function fetchTrackInfo(
+  artist: string,
+  track: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<LastfmTrackInfo> {
+  const empty: LastfmTrackInfo = { durationMs: null, recordingMbid: null, albumName: null };
+  try {
+    const body = (await call(
+      { method: "track.getInfo", artist, track, autocorrect: "1" },
+      fetchImpl,
+    )) as RawResponse & {
+      track?: { duration?: string; mbid?: string; album?: { title?: string } };
+    };
+
+    const duration = Number(body.track?.duration ?? "");
+    return {
+      // Last.fm reports 0 for "unknown", which is not a duration.
+      durationMs: Number.isFinite(duration) && duration > 0 ? duration : null,
+      recordingMbid: mbid(body.track?.mbid),
+      albumName: body.track?.album?.title?.trim() || null,
+    };
+  } catch {
+    return empty;
+  }
+}

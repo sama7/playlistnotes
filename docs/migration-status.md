@@ -1216,6 +1216,75 @@ for profiles that actually need one.
 One key and secret serve every environment: the callback is passed per request
 from `APP_BASE_URL`, so localhost and production differ only in that value.
 
+## Acquiring a provider identifier for a scrobble — 2026-09-09
+
+Samah noticed that Last.fm's own track page links to Apple Music — for
+Anyasa's "Rasiya", `geo.music.apple.com/album/id1574601347?i=1574601348` — and
+asked why that is not used when jotting.
+
+**Because it is not in the API.** `track.getInfo` returns name, mbid, duration,
+listeners, playcount, artist, tags and a URL, and nothing else; the "Play this
+track" links are rendered into Last.fm's HTML only. Taking them would mean
+scraping their pages, which is fragile and outside what their API terms
+sanction.
+
+**The identifier is obtained from the provider instead, and it is the same
+one.** Searching Apple's public catalog for "Anyasa Rasiya" returns track
+`1574601348` on album `1574601347` — byte-identical to what Last.fm links to.
+Apple's search needs no credentials, so this survives with every Spotify
+variable absent; Spotify is queried too when configured.
+
+### Why a name search does not break "entities come from identifiers"
+
+Because a search result is a **suggestion shown to a person**. The rule exists
+to stop a name silently becoming a shared entity; here a human sees a title, an
+artist, an album, a length and a cover, and confirms. What then anchors the
+recording is the provider's identifier, retrieved by re-reading the track
+through `captureFromProviderRef`. That is §3a.5's "identifier acquisition"
+promotion path, and it is what Astra recommended: *let someone attach or confirm
+a provider link later, without making that a prerequisite for writing.*
+
+**Nothing auto-links, however confident the ranking.** Ordering decides what is
+shown first; a person decides what is true.
+
+### Duration is what makes the suggestion defensible
+
+`track.getInfo` frequently supplies a duration even when it supplies no mbid,
+and length separates takes that a string comparison cannot:
+
+| Candidate | Length vs Last.fm's 228000ms | Score |
+| --- | --- | --- |
+| Rasiya — Anyasa (`1574601348`) | **865 ms** | 9 |
+| Rasiya — Anyasa & Isheeta Chakrvarty | 865 ms, different credit | 5 |
+| Rasiya (Extended Mix) | 212 s | −1 |
+| Rasiya (Mixed), DJ mix | 181 s | −2 |
+
+Alternate cuts are ranked down rather than hidden — the listener may well have
+heard the extended mix.
+
+### What this fixes
+
+Scrobbles arrive with no MusicBrainz id far more often than not (none of
+`samah-`'s recent plays carried one), which left every imported note
+creator-scoped and without a cover. A confirmed match now yields a
+provider-anchored recording, artwork that is licensed to display, and the same
+row when two people confirm the same track — one recording, two private notes.
+
+### Validation — 2026-09-09
+
+```
+npm run typecheck / lint                 clean
+npm test                                 170 passed  (+5 matcher)
+npm run test:integration                 218 passed  (+5 confirmation)
+npm run build                            succeeded
+```
+
+Verified live: the matcher ranks `1574601348` first for the real track. The
+integration tests cover the security property — only the provider and id are
+honoured, and a form carrying a false title, artist and image URL still yields
+Apple's own facts — plus the fallbacks: no confirmation stays creator-scoped,
+and a provider that will not answer still writes the note.
+
 ## What is left before a public release
 
 | # | Work | Est. | Blocked? |

@@ -24,6 +24,7 @@ import type { AppleRef } from "./parse-link";
  */
 
 const LOOKUP = "https://itunes.apple.com/lookup";
+const SEARCH = "https://itunes.apple.com/search";
 const TIMEOUT_MS = 6_000;
 
 /** Apple's public API is informally limited to roughly 20 calls a minute. The
@@ -166,4 +167,71 @@ export async function fetchApple(
   if (ref.kind === "track") return fetchAppleTrack(ref.id, options);
   if (ref.kind === "album") return fetchAppleAlbum(ref.id, options);
   return null;
+}
+
+/** One possible match, as Apple describes it. Nothing is resolved yet. */
+export interface AppleSearchResult {
+  providerId: string;
+  title: string;
+  artistName: string;
+  albumName: string | null;
+  albumProviderId: string | null;
+  durationMs: number | null;
+  artwork: Artwork;
+  providerUrl: string | null;
+}
+
+/**
+ * Search Apple's catalog by text.
+ *
+ * Needed because Last.fm's own "Play this track" links — which do carry an
+ * Apple Music id — exist only in its rendered HTML, not in any API response.
+ * Scraping that page would be fragile and outside what their API terms
+ * sanction, so the id is obtained from Apple directly instead. It resolves to
+ * the same track: searching "Anyasa Rasiya" returns trackId 1574601348, which
+ * is exactly what Last.fm's page links to.
+ *
+ * **A text search is a suggestion, never an identity.** Names cannot create
+ * entities (AGENTS.md §3a); what comes back here is shown to a person, who
+ * confirms it. Only then does the *identifier* anchor a recording.
+ */
+export async function searchAppleTracks(
+  term: string,
+  limit = 5,
+  fetchImpl: typeof fetch = fetch,
+): Promise<AppleSearchResult[]> {
+  const params = new URLSearchParams({
+    term,
+    entity: "song",
+    limit: String(Math.min(Math.max(limit, 1), 25)),
+  });
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  try {
+    const response = await fetchImpl(`${SEARCH}?${params}`, { signal: controller.signal });
+    if (!response.ok) return [];
+    const body = (await response.json()) as { results?: RawResult[] };
+
+    return (body.results ?? [])
+      .filter((r) => r.trackId && r.trackName && r.artistName)
+      .map((r) => ({
+        providerId: String(r.trackId),
+        title: r.trackName!,
+        artistName: r.artistName!,
+        albumName: r.collectionName ?? null,
+        albumProviderId: r.collectionId ? String(r.collectionId) : null,
+        durationMs: r.trackTimeMillis ?? null,
+        artwork: fromItunesArtwork(r.artworkUrl100),
+        providerUrl: r.trackId
+          ? `https://music.apple.com/album/id${r.collectionId}?i=${r.trackId}`
+          : null,
+      }));
+  } catch {
+    // A search that fails is a search with no suggestions, not an error worth
+    // interrupting someone's note for.
+    return [];
+  } finally {
+    clearTimeout(timer);
+  }
 }

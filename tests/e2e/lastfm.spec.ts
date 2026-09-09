@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { signIn, signUp, testEmail } from "./support/auth";
+import { signUp, testEmail } from "./support/auth";
 
 /**
  * Connecting a Last.fm account, through a real browser.

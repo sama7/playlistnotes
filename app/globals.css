@@ -1065,3 +1065,28 @@ ul.scrobble-list {
 
 .lastfm-prompt input { max-width: 18rem; }
 .lastfm-prompt .row { flex-wrap: wrap; }
+
+/* ---- confirming which recording a scrobble is ---- */
+
+.match-picker { gap: 0.4rem; }
+.match-picker > .note { margin-bottom: 0.3rem; }
+
+label.match {
+  display: flex;
+  gap: 0.6rem;
+  align-items: center;
+  padding: 0.4rem;
+  border-radius: 4px;
+  cursor: pointer;
+}
+label.match:hover { background: var(--line); }
+label.match input { width: auto; flex-shrink: 0; }
+
+.match-text { display: flex; flex-direction: column; min-width: 0; }
+.match-text .note { margin: 0; }
+/* One line each: a four-row picker that wraps stops being scannable. */
+.match-text > * {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
