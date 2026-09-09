@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { formatExperienced } from "@/lib/format-date";
 import type { ListenView } from "@/lib/listens/service";
+import { shouldApply, shouldPoll } from "@/lib/listens/polling";
 import { CoverArt } from "@/components/cover-art";
 import type { TrackCandidate } from "@/lib/music/match-track";
 import {
@@ -13,6 +14,13 @@ import {
   recentListensAction,
   type RecentState,
 } from "@/app/listens/actions";
+
+/**
+ * How often to re-read the feed. Tracks run three to five minutes, so this is
+ * responsive without being wasteful — and it is per open tab, against an API
+ * that is somebody else's to pay for.
+ */
+const POLL_MS = 30_000;
 
 /**
  * What you have been listening to, offered as things to write about.
@@ -26,29 +34,95 @@ import {
  * that has to be fast. So the server renders everything else and this fetches
  * itself afterwards; if Last.fm is slow or down, the strip says so and nothing
  * else on the page is affected.
+ *
+ * **It then keeps itself current**, the way a Last.fm profile page does — you
+ * should not have to reload to see what you just played. Three rules keep that
+ * from being rude or disruptive:
+ *
+ *   - **Never while someone is writing.** An open jot box freezes the list
+ *     completely: a refresh that reordered rows mid-sentence, or dropped the
+ *     row being written about out of the top ten, would cost somebody their
+ *     words. Both the polling and the *applying* of an in-flight reply are
+ *     suppressed, so a request that started before they clicked cannot land
+ *     underneath them either.
+ *   - **Never in a background tab.** Polling somebody else's API while nobody
+ *     is looking spends their rate limit for nothing.
+ *   - **Immediately on return.** Coming back to the tab, or finishing a jot,
+ *     refreshes at once rather than waiting out the interval.
  */
 export function Scrobbles({ username }: { username: string }) {
   const [state, setState] = useState<RecentState | null>(null);
   const [writingFor, setWritingFor] = useState<string | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-    // The state update happens in the promise callback, not in the effect body,
-    // and is dropped if the component went away while Last.fm was answering.
-    recentListensAction().then(
-      (result) => {
-        if (!cancelled) setState(result);
-      },
-      () => {
-        if (!cancelled) {
-          setState({ ok: false, message: "Last.fm isn't answering right now." });
-        }
-      },
-    );
-    return () => {
-      cancelled = true;
-    };
+  /**
+   * Read by the polling loop, which must see the *current* value without being
+   * torn down and rebuilt every time the editor opens or closes.
+   */
+  const writing = useRef<string | null>(null);
+  const inFlight = useRef(false);
+
+  const beginWriting = useCallback((sourceRef: string | null) => {
+    writing.current = sourceRef;
+    setWritingFor(sourceRef);
   }, []);
+
+  /**
+   * Fetch, without deciding anything. Returning the result rather than storing
+   * it keeps the "should this be applied?" question at the call site, where the
+   * answer depends on whether someone has since started writing.
+   */
+  const load = useCallback(async (): Promise<RecentState | null> => {
+    // One request at a time. A slow reply must not stack up behind the timer.
+    if (inFlight.current) return null;
+    inFlight.current = true;
+    try {
+      return await recentListensAction();
+    } catch {
+      return { ok: false, message: "Last.fm isn't answering right now." };
+    } finally {
+      inFlight.current = false;
+    }
+  }, []);
+
+  /**
+   * Apply a reply — unless a jot box opened while it was in flight. That guard
+   * is the one that matters: a request begun before the click must not land
+   * underneath somebody mid-sentence.
+   */
+  const apply = useCallback((result: RecentState | null, stopped = false) => {
+    if (result && shouldApply({ writing: writing.current, stopped })) setState(result);
+  }, []);
+
+  useEffect(() => {
+    let stopped = false;
+
+    const tick = () => {
+      // The three rules live in `shouldPoll`, stated once and tested directly.
+      if (!shouldPoll({ writing: writing.current, hidden: document.hidden, stopped })) return;
+      void load().then((result) => apply(result, stopped));
+    };
+
+    tick();
+    const timer = window.setInterval(tick, POLL_MS);
+
+    // Coming back to the tab should show the truth at once, not in 30 seconds.
+    const onVisible = () => {
+      if (!document.hidden) tick();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+
+    return () => {
+      stopped = true;
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [load, apply]);
+
+  /** Finishing a jot resumes the feed and shows the result immediately. */
+  const doneWriting = useCallback(() => {
+    beginWriting(null);
+    void load().then(apply);
+  }, [beginWriting, load, apply]);
 
   return (
     <section className="scrobbles">
@@ -107,17 +181,14 @@ export function Scrobbles({ username }: { username: string }) {
                   type="button"
                   className="linkish"
                   aria-label={`Write about ${listen.trackName} by ${listen.artistName}`}
-                  onClick={() => setWritingFor(listen.sourceRef)}
+                  onClick={() => beginWriting(listen.sourceRef)}
                 >
                   Jot this
                 </button>
               )}
 
               {writingFor === listen.sourceRef && (
-                <ScrobbleJot
-                  listen={listen}
-                  onDone={() => setWritingFor(null)}
-                />
+                <ScrobbleJot listen={listen} onDone={doneWriting} />
               )}
             </li>
           ))}

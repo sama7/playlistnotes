@@ -115,3 +115,113 @@ test.describe("connecting an account", () => {
     await expect(page.getByText(/not.*a way to sign in to trackjot/i)).toBeVisible();
   });
 });
+
+/**
+ * The strip keeps itself current, and stops dead while someone is writing.
+ *
+ * **Opt-in, because the strip does not render without a connected Last.fm.** A
+ * freshly signed-up test user has nothing to poll for, so these cannot run in
+ * CI; gating the whole group on an env var is honest about that and avoids two
+ * permanently-skipping tests whose aborts leave stray errors in the report.
+ *
+ * To run them against an account that has one:
+ *
+ * ```
+ * E2E_LASTFM_ACCOUNT=1 npx playwright test tests/e2e/lastfm.spec.ts
+ * ```
+ *
+ * The *rule* underneath — when to poll, and when a reply that arrived late may
+ * be applied — is covered directly and deterministically by
+ * `lib/listens/polling.test.ts`, which does run in CI. These add the wiring on
+ * top: that the interval exists, and that an open jot box actually stops it.
+ */
+test.describe("the recently-played strip updates itself", () => {
+  test.skip(
+    !configured || !process.env.E2E_LASTFM_ACCOUNT,
+    "Set E2E_LASTFM_ACCOUNT=1 and sign in as an account with a connected Last.fm.",
+  );
+
+  /**
+   * Count reads of the recent-listens feed.
+   *
+   * Scoped to the strip's own action by its response shape rather than to "any
+   * POST to /notes" — Clerk fires server actions of its own on this page, and
+   * counting those made the first version of this test count to two before the
+   * strip had asked for anything.
+   */
+  async function countPolls(page: import("@playwright/test").Page) {
+    const calls = { n: 0 };
+    await page.route("**/notes**", async (route) => {
+      const request = route.request();
+      if (request.method() !== "POST" || !request.headers()["next-action"]) {
+        await route.continue();
+        return;
+      }
+      const response = await route.fetch();
+      const body = await response.text();
+      // The strip's action is the one whose reply carries listen rows.
+      if (body.includes("sourceRef") || body.includes("importedNoteId")) calls.n += 1;
+      await route.fulfill({ response, body });
+    });
+    return calls;
+  }
+
+  /** The strip must actually be on the page, or these assert about nothing. */
+  async function requireStrip(page: import("@playwright/test").Page) {
+    await expect(
+      page.locator("section.scrobbles"),
+      "no recently-played strip — is this account's Last.fm connected?",
+    ).toBeVisible({ timeout: 15_000 });
+  }
+
+  test("polls again without the page being reloaded", async ({ page }) => {
+    await signUp(page, testEmail("lastfm-poll"));
+    const calls = await countPolls(page);
+
+    await page.clock.install();
+    await page.goto("/notes");
+    await requireStrip(page);
+
+    await expect.poll(() => calls.n, { timeout: 30_000 }).toBeGreaterThan(0);
+    const afterFirst = calls.n;
+
+    /**
+     * A fake clock rather than a real wait. The first version slept through a
+     * genuine 30-second interval, passed alone, and failed inside the full
+     * suite when six workers shared one dev server — and a flaky test is worse
+     * than none, because it teaches you to ignore red.
+     */
+    await page.clock.runFor(65_000);
+    await expect.poll(() => calls.n, { timeout: 15_000 }).toBeGreaterThan(afterFirst);
+  });
+
+  test("stops polling while a jot is being written, and resumes on cancel", async ({ page }) => {
+    await signUp(page, testEmail("lastfm-pause"));
+    await page.clock.install();
+    await page.goto("/notes");
+    await requireStrip(page);
+
+    const jot = page.getByRole("button", { name: /^jot this$/i }).first();
+    // Only meaningful when there is something to jot.
+    await expect(jot, "no scrobbles to write about").toBeVisible({ timeout: 15_000 });
+
+    await jot.click();
+    const box = page.locator("textarea").first();
+    await expect(box).toBeVisible();
+    await box.fill("half a sentence that must survive");
+
+    const calls = await countPolls(page);
+    const before = calls.n;
+
+    // Two intervals' worth of time, instantly.
+    await page.clock.runFor(65_000);
+    expect(calls.n, "the strip polled while a jot was open").toBe(before);
+    // The words are still there.
+    await expect(box).toHaveValue("half a sentence that must survive");
+
+    await page.getByRole("button", { name: /^cancel$/i }).first().click();
+    await expect
+      .poll(() => calls.n, { timeout: 20_000, intervals: [1000] })
+      .toBeGreaterThan(before);
+  });
+});

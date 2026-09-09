@@ -1322,6 +1322,80 @@ Verified after deploying that the served stylesheet actually contains
 `fieldset{min-width:0}` — the fix being in the repository is not the same as the
 fix being on the page.
 
+## A live strip, and a UI sweep that finds faults instead of Samah — 2026-09-09
+
+### The recently-played strip updates itself
+
+Like a Last.fm profile page: you should not reload to see what you just played.
+`POLL_MS` is 30 seconds — tracks run three to five minutes, so that is
+responsive without being wasteful against an API that is somebody else's to pay
+for. Three rules govern it, extracted into `lib/listens/polling.ts` so they are
+stated once and tested directly rather than inferred from an interval, a
+visibility listener and two refs:
+
+- **Never while someone is writing.** An open jot box freezes the list
+  completely.
+- **Never in a background tab.**
+- **Immediately on return** — coming back to the tab, or finishing a jot,
+  refreshes at once rather than waiting out the interval.
+
+**The subtle half is `shouldApply`, not `shouldPoll`.** Not polling is easy; the
+harder case is a request already in flight when someone clicks "Jot this".
+Applying that reply would reorder rows under a half-written sentence, or drop
+the row being written about out of the top ten — and the words go with it. So
+the reply is discarded, not merely un-requested. A hidden tab, by contrast, may
+still *apply* something it already asked for; there is no harm in being current
+when the person looks back.
+
+### Two UI faults, found by measurement
+
+| Fault | Cause |
+| --- | --- |
+| The "qawwali" tag's count sat lower and larger than its name | `.note` is 0.85rem with a 0.4rem top margin, both absolute — inside a 0.75rem chip the count rendered *bigger* than the word it belonged to |
+| The CSV import form rendered over the collection list, dropdowns and all | **A closed `<details>` is hidden by a UA `display` rule, and any author rule setting `display` on that content wins and un-hides it.** `form.capture { display: flex }` did exactly that: the form laid out 126px below its own collapsed panel |
+
+Both fixes are stated generally — `.chip .note` and
+`details:not([open]) > *:not(summary)` — rather than patching the one chip and
+the one form, because the next chip and the next `display` rule would do the
+same.
+
+### The sweep
+
+`tests/e2e/responsive.spec.ts` walks eight pages at laptop (1440), tablet (768)
+and phone (390), with content seeded so nothing is an empty shell, and checks
+three things that keep going wrong here:
+
+1. **Sideways spill** — the page must never scroll horizontally.
+2. **Overlap** — no two controls may sit on top of one another, ignoring
+   ancestor pairs, shared labels, and anything inside an open `<dialog>`.
+3. **Chip alignment** — no child of a chip may carry a larger font or a block
+   margin, which is what "the spacing looks weird" turned out to mean.
+
+Failures name the offender (`form.scrobble-jot +69px`) rather than only
+reporting that something is wrong. Both faults above were found by this rather
+than by eye, which is the point: Samah should not be the mechanism that
+discovers them.
+
+### A flaky test, removed rather than tolerated
+
+The first polling test slept through a real 30-second interval. It passed alone
+and failed in the full suite when six workers shared one dev server. It now uses
+Playwright's fake clock — and the two strip tests are **opt-in via
+`E2E_LASTFM_ACCOUNT=1`**, because the strip does not render without a connected
+Last.fm and a freshly signed-up test user has nothing to poll for. Two
+permanently-skipping tests whose aborts left stray errors in the report were
+worse than an honest gate; the rule they cover runs in CI as a unit test.
+
+### Validation — 2026-09-09
+
+```
+npm run typecheck / lint                 clean
+npm test                                 178 passed  (+8 polling rules)
+npm run test:integration                 218 passed
+npm run test:e2e                          46 passed, 3 skipped (+3 responsive)
+npm run build                            succeeded
+```
+
 ## What is left before a public release
 
 | # | Work | Est. | Blocked? |

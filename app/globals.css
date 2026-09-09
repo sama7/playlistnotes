@@ -245,6 +245,20 @@ blockquote.shared-note {
 details summary { cursor: pointer; font-size: 0.85rem; color: var(--muted); }
 details > * { margin-top: 0.6rem; }
 
+/**
+ * Keep a closed `<details>` closed.
+ *
+ * The browser hides the content of a collapsed `<details>` with its own
+ * `display` rule — and **any author rule that sets `display` on that content
+ * wins and un-hides it**. `form.capture { display: flex }` did exactly that, so
+ * the CSV import form rendered 126px below its own collapsed panel, on top of
+ * the collection list beneath, dropdowns and all.
+ *
+ * Stated generally rather than by patching that one form, because the next
+ * `display` rule on anything inside a `<details>` would do the same.
+ */
+details:not([open]) > *:not(summary) { display: none; }
+
 /* A prompt, not a failure — the artist request is the expected first-paste
    path, so it must not read as an error. */
 .prompt {
@@ -415,6 +429,20 @@ a.chip.tag.active {
   border-color: var(--fg);
 }
 a.chip.tag.active .note { color: var(--bg); opacity: 0.7; }
+
+/**
+ * A count inside a chip is part of the chip, not a note beside it.
+ *
+ * `.note` is 0.85rem with a 0.4rem top margin — both absolute, so inside a
+ * 0.75rem chip the count rendered *larger* than the word it belonged to and sat
+ * lower than it. That is what "the spacing on the qawwali tag looks weird"
+ * was.
+ */
+.chip .note {
+  font-size: inherit;
+  margin: 0;
+  opacity: 0.7;
+}
 
 /* ---- csv import ---- */
 
