@@ -158,3 +158,108 @@ test.describe("narrow viewports", () => {
     expect(box!.width).toBeLessThanOrEqual(NARROW.width);
   });
 });
+
+/** The recently-played strip, with a track playing right now. */
+const LIVE_STRIP = `
+<main><section class="scrobbles">
+  <div class="row scrobbles-head">
+    <strong>Recently played</strong>
+    <span class="note">from <a href="#">samah-</a> on Last.fm</span>
+  </div>
+  <ul class="scrobble-list">
+    <li class="scrobble live">
+      <div class="scrobble-main">
+        <div class="scrobble-title"><a href="#">Moved Again</a></div>
+        <div class="note">Anhad + Tanner · Silent Days EP</div>
+        <div class="note scrobble-when"><span class="playing-bars" aria-hidden="true"><i></i><i></i><i></i></span>Playing now</div>
+      </div>
+      <button type="button" class="linkish">Jot this</button>
+    </li>
+    <li class="scrobble">
+      <div class="scrobble-main">
+        <div class="scrobble-title"><a href="#">Shiva Valley</a></div>
+        <div class="note">Anyasa · Shiva Valley</div>
+        <div class="note scrobble-when">Sep 9, 2026, 2:41 PM</div>
+      </div>
+      <button type="button" class="linkish">Jot this</button>
+    </li>
+  </ul>
+</section></main>`;
+
+test.describe("the track playing right now", () => {
+  /**
+   * The live row is marked by a tint *and* a left edge, and reserves that edge
+   * on every row. Without the reservation a track starting or finishing shunts
+   * every title sideways, which is the sort of twitch that reads as a bug.
+   */
+  test("does not shift the other rows when it appears", async ({ page }) => {
+    await page.setViewportSize(NARROW);
+    await page.setContent(
+      `<!doctype html><html><head><style>${await stylesheet()}</style></head><body>${LIVE_STRIP}</body></html>`,
+    );
+
+    const lefts = await page.evaluate(() =>
+      Array.from(document.querySelectorAll(".scrobble-title")).map((t) =>
+        Math.round(t.getBoundingClientRect().left),
+      ),
+    );
+    expect(new Set(lefts).size, `titles start at ${lefts.join(", ")}`).toBe(1);
+  });
+
+  /** Three bars at one height is a glyph, not a level meter. */
+  test("animates its level meter out of step", async ({ page }) => {
+    await page.setViewportSize(NARROW);
+    await page.setContent(
+      `<!doctype html><html><head><style>${await stylesheet()}</style></head><body>${LIVE_STRIP}</body></html>`,
+    );
+    await page.waitForTimeout(400);
+
+    const heights = await page.evaluate(() =>
+      Array.from(document.querySelectorAll(".playing-bars i")).map(
+        (b) => Math.round(b.getBoundingClientRect().height * 10) / 10,
+      ),
+    );
+    expect(new Set(heights).size, `bar heights ${heights.join(", ")}`).toBeGreaterThan(1);
+  });
+
+  /**
+   * With reduced motion the global rule collapses every animation to 0.01ms,
+   * which would freeze all three bars at the same starting height. Fixed uneven
+   * heights still read as a meter while standing perfectly still.
+   */
+  test("stands still but still reads as a meter under reduced motion", async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.setViewportSize(NARROW);
+    await page.setContent(
+      `<!doctype html><html><head><style>${await stylesheet()}</style></head><body>${LIVE_STRIP}</body></html>`,
+    );
+    await page.waitForTimeout(200);
+
+    const bars = await page.evaluate(() =>
+      Array.from(document.querySelectorAll(".playing-bars i")).map((b) => ({
+        h: Math.round(b.getBoundingClientRect().height * 10) / 10,
+        animation: getComputedStyle(b).animationName,
+      })),
+    );
+    expect(bars.every((b) => b.animation === "none"), "animation should be off").toBe(true);
+    expect(new Set(bars.map((b) => b.h)).size, `heights ${bars.map((b) => b.h).join(", ")}`)
+      .toBeGreaterThan(1);
+  });
+
+  /** The meter is decorative; "Playing now" beside it carries the meaning. */
+  test("hides the decorative meter from assistive technology", async ({ page }) => {
+    await page.setViewportSize(NARROW);
+    await page.setContent(
+      `<!doctype html><html><head><style>${await stylesheet()}</style></head><body>${LIVE_STRIP}</body></html>`,
+    );
+    await expect(page.locator(".playing-bars")).toHaveAttribute("aria-hidden", "true");
+    await expect(page.getByText("Playing now")).toBeVisible();
+  });
+
+  for (const viewport of [NARROW, NARROWEST]) {
+    test(`does not spill sideways at ${viewport.width}px`, async ({ page }) => {
+      const { documentOverflow, widest } = await overflowOf(page, LIVE_STRIP, viewport);
+      expect(documentOverflow, `widest offender: ${widest}`).toBeLessThanOrEqual(0);
+    });
+  }
+});

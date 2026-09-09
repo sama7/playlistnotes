@@ -152,7 +152,10 @@ export function Scrobbles({ username }: { username: string }) {
       {state?.ok && state.listens.length > 0 && (
         <ul className="scrobble-list">
           {state.listens.map((listen) => (
-            <li key={listen.sourceRef} className="scrobble">
+            <li
+              key={listen.sourceRef}
+              className={`scrobble${listen.playedAt ? "" : " live"}`}
+            >
               <div className="scrobble-main">
                 <div className="scrobble-title">
                   {listen.url ? (
@@ -168,9 +171,20 @@ export function Scrobbles({ username }: { username: string }) {
                   {listen.albumName ? ` · ${listen.albumName}` : ""}
                 </div>
                 <div className="note scrobble-when">
-                  {listen.playedAt
-                    ? formatExperienced(listen.playedAt, "time")
-                    : "Playing now"}
+                  {listen.playedAt ? (
+                    formatExperienced(listen.playedAt, "time")
+                  ) : (
+                    <>
+                      {/* Decorative — "Playing now" beside it already says this,
+                          so a screen reader is spared three anonymous bars. */}
+                      <span className="playing-bars" aria-hidden="true">
+                        <i />
+                        <i />
+                        <i />
+                      </span>
+                      Playing now
+                    </>
+                  )}
                 </div>
               </div>
 

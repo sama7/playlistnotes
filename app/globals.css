@@ -10,6 +10,12 @@
   --accent: #3b4cca;
   --warn-bg: #fff6e5;
   --warn-line: #e0b354;
+  /* The row that is playing right now. Deliberately an accent tint rather than
+     a grey: grey reads as *disabled* almost everywhere else in an interface,
+     and this is the most alive thing on the page. Kept faint so it marks the
+     row without competing with the text in it. */
+  --live-bg: #f1f2fd;
+  --live-text: #33409f;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -22,6 +28,8 @@
     --accent: #93a0ff;
     --warn-bg: #2c2413;
     --warn-line: #7a5f21;
+    --live-bg: #1b1d33;
+    --live-text: #aab4ff;
   }
 }
 
@@ -1070,7 +1078,7 @@ a.download:hover { background: var(--line); }
 
 ul.scrobble-list {
   list-style: none;
-  margin: 0;
+  margin: 0 0 0 -0.75rem;
   padding: 0;
   display: flex;
   flex-direction: column;
@@ -1081,8 +1089,11 @@ ul.scrobble-list {
   gap: 0.9rem;
   align-items: baseline;
   flex-wrap: wrap;
-  padding: 0.6rem 0;
+  /* The left padding is reserved on *every* row, not just the live one, so a
+     track starting or finishing does not shunt the whole list sideways. */
+  padding: 0.6rem 0.75rem;
   border-top: 1px solid var(--line);
+  border-radius: 0 4px 4px 0;
 }
 .scrobble-main { flex: 1; min-width: 0; }
 .scrobble-title { font-weight: 600; }
@@ -1094,6 +1105,77 @@ ul.scrobble-list {
   white-space: nowrap;
 }
 .scrobble-when { font-variant-numeric: tabular-nums; }
+
+/* ---- the track playing right now ---- */
+
+.scrobble.live {
+  background: var(--live-bg);
+  /* A left edge as well as a tint: the tint alone is faint by design, and on a
+     phone in daylight the edge is what actually carries the signal. It also
+     survives for anyone who cannot distinguish the tint from the page. */
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.scrobble.live .scrobble-when {
+  color: var(--live-text);
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+/**
+ * Three bars rising and falling, like a level meter.
+ *
+ * `transform: scaleY` rather than `height` so the animation runs on the
+ * compositor and never triggers layout — this sits on a page that is polling
+ * and re-rendering, and an animation that reflows thirty times a second would
+ * be a strange thing to have built.
+ *
+ * Decorative: the words "Playing now" sit right beside it, so it is hidden
+ * from assistive technology rather than announced as three anonymous bars.
+ */
+.playing-bars {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 0.75em;
+  flex-shrink: 0;
+}
+
+.playing-bars i {
+  display: block;
+  width: 3px;
+  height: 100%;
+  border-radius: 1px;
+  background: currentColor;
+  transform-origin: bottom;
+  animation: playing-bars 1s ease-in-out infinite;
+}
+
+/* Negative delays so the bars start already out of step, rather than rising
+   together once and only then diverging. */
+.playing-bars i:nth-child(1) { animation-delay: -0.66s; }
+.playing-bars i:nth-child(2) { animation-delay: -0.33s; }
+
+@keyframes playing-bars {
+  0%, 100% { transform: scaleY(0.3); }
+  50% { transform: scaleY(1); }
+}
+
+/**
+ * Reduced motion gets a still meter, not three identical stubs.
+ *
+ * The global reduced-motion rule collapses every animation to 0.01ms, which
+ * would freeze all three bars at the same starting height and read as a glyph
+ * nobody chose. Fixed, uneven heights still say "level meter" while standing
+ * perfectly still.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .playing-bars i { animation: none; transform: none; }
+  .playing-bars i:nth-child(1) { height: 55%; }
+  .playing-bars i:nth-child(2) { height: 100%; }
+  .playing-bars i:nth-child(3) { height: 70%; }
+}
 
 .scrobble-jot {
   flex-basis: 100%;

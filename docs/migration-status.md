@@ -1396,6 +1396,49 @@ npm run test:e2e                          46 passed, 3 skipped (+3 responsive)
 npm run build                            succeeded
 ```
 
+## Marking the track that is playing — 2026-09-09
+
+A level meter beside "Playing now", and a highlight on the row, matching what a
+Last.fm profile does.
+
+**The highlight is an accent tint, not grey.** Samah suggested grey and invited a
+better idea: grey reads as *disabled* nearly everywhere else in an interface,
+and the now-playing row is the most alive thing on the page. A faint indigo tint
+plus a 3px accent edge says "live" instead. The edge matters independently of
+the tint — the tint is deliberately faint, and on a phone in daylight the edge
+is what actually carries the signal, as well as surviving for anyone who cannot
+separate the tint from the page.
+
+Contrast was computed before it was looked at, since a tinted surface is exactly
+where this project has been caught before. All nine combinations pass AA in both
+themes; the tightest is muted text on the light tint at **4.73:1**.
+
+Details worth keeping:
+
+- **`transform: scaleY`, not `height`.** The strip polls and re-renders; an
+  animation that triggered layout thirty times a second would be a strange thing
+  to have built. Negative animation delays start the bars out of step rather
+  than having them rise together once and only then diverge.
+- **The meter is `aria-hidden`.** "Playing now" sits beside it, so assistive
+  technology is spared three anonymous bars.
+- **Reduced motion gets a still meter, not three identical stubs.** The global
+  reduced-motion rule collapses animations to 0.01ms, which would freeze every
+  bar at the same starting height and read as a glyph nobody chose. Fixed uneven
+  heights still say "level meter" while standing perfectly still.
+- **Every row reserves the left edge**, not just the live one. Without that, a
+  track starting or finishing shunts every title sideways — the sort of twitch
+  that reads as a bug. Verified at 37px across all rows.
+
+Six tests in `narrow-layout.spec.ts` cover it: alignment, out-of-step animation,
+the reduced-motion still state, the `aria-hidden`, and no spill at 402px or
+320px.
+
+```
+npm test                                 178 passed
+npm run test:integration                 218 passed
+npm run test:e2e                          52 passed, 3 skipped (+6)
+```
+
 ## What is left before a public release
 
 | # | Work | Est. | Blocked? |
