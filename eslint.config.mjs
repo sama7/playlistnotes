@@ -9,7 +9,17 @@ const eslintConfig = [
   {
     // v1 source is gone from git; `client/` may still linger on disk as
     // untracked build artifacts until it is deleted manually.
-    ignores: ["client/**", ".next/**", "node_modules/**", "prisma/migrations/**"],
+    // `artifact/` is the packaged standalone build the runbook tells you to
+    // create. It is gitignored and excluded from tsconfig; without it here too,
+    // merely having deployed once makes `npm run lint` report thousands of
+    // problems in generated code.
+    ignores: [
+      "client/**",
+      ".next/**",
+      "artifact/**",
+      "node_modules/**",
+      "prisma/migrations/**",
+    ],
   },
   ...coreWebVitals,
   ...typescriptConfig,

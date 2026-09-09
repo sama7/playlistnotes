@@ -1439,6 +1439,45 @@ npm run test:integration                 218 passed
 npm run test:e2e                          52 passed, 3 skipped (+6)
 ```
 
+## A CI failure I reported as green — 2026-09-09
+
+**I told Samah CI was passing on `8e6b13c`. It was not.** I read the workflow
+badge while that run was still in progress, so the badge was still showing the
+*previous* commit's result, and I reported it as the current one. The deploy
+itself was fine — the artifact was verified directly — but the claim was wrong,
+and it was wrong in the direction that matters.
+
+**What actually failed:** the browser suite timed out at three minutes on the
+tablet viewport. The cause was `waitForLoadState("networkidle")` in the new
+responsive sweep. On a signed-in page the network never *is* idle — Clerk polls
+in the background, and the recently-played strip now polls Last.fm — so the
+condition can simply never arrive. Playwright discourages that API for exactly
+this reason. Waiting for a visible `main` landmark instead is both correct and
+faster: the three viewports went from a 3-minute timeout to 12 seconds.
+
+**Why local runs did not catch it.** CI runs the browser suite against the
+**packaged standalone artifact** on port 3001, not `npm run dev`. Reproducing
+that locally — build, package, serve, `E2E_BASE_URL=http://localhost:3001` — 
+showed the failure immediately. That reproduction is now the last check before
+a deploy rather than a thing to reach for after a red run.
+
+Also fixed: `artifact/` was gitignored and excluded from `tsconfig`, but not
+from ESLint. Having deployed even once made `npm run lint` report thousands of
+problems in generated code. Third config, same directory.
+
+### How to check CI honestly
+
+The badge reflects the latest **completed** run, which during a push is the
+previous commit. Read the run for a specific SHA, or wait for the badge to
+change — never read it immediately after pushing and attribute it to what was
+just pushed.
+
+```
+npm test                                 178 passed
+npm run test:integration                 218 passed
+E2E_BASE_URL=… against the artifact       52 passed, 3 skipped
+```
+
 ## What is left before a public release
 
 | # | Work | Est. | Blocked? |

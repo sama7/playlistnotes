@@ -164,7 +164,17 @@ for (const viewport of VIEWPORTS) {
 
     for (const [name, url] of pages) {
       await page.goto(url);
-      await page.waitForLoadState("networkidle");
+      /**
+       * Wait for the content, not for the network to go quiet.
+       *
+       * `waitForLoadState("networkidle")` hung here and timed the whole test
+       * out at three minutes. On a signed-in page the network never *is* idle —
+       * Clerk polls in the background, and the recently-played strip polls
+       * Last.fm — so the condition can simply never arrive. Playwright
+       * discourages it for exactly this reason. A visible landmark is the thing
+       * actually being waited for.
+       */
+      await expect(page.locator("main")).toBeVisible({ timeout: 30_000 });
 
       const { spill, widest } = await sidewaysSpill(page);
       if (spill > 0) problems.push(`${name}: scrolls sideways by ${spill}px — widest ${widest}`);
