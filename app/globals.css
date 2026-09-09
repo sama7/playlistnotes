@@ -887,6 +887,15 @@ form.browse {
 
 /* ---- note extras: when and where ---- */
 
+/**
+ * A `fieldset` carries an intrinsic `min-width: min-content` that no other
+ * element has, and it refuses to shrink past it inside a flex or grid parent.
+ * That is the classic reason a form spills sideways on a phone while looking
+ * fine on a laptop, and it is what pushed the scrobble match picker 20px past
+ * an iPhone. Every fieldset opts out.
+ */
+fieldset { min-width: 0; }
+
 fieldset.sub-fields {
   border: 1px solid var(--line);
   border-radius: 6px;
@@ -1060,6 +1069,10 @@ ul.scrobble-list {
 
 .scrobble-jot {
   flex-basis: 100%;
+  /* A flex item's default `min-width: auto` refuses to shrink below its
+     content. Without this the fieldset's width becomes the row's width and the
+     whole card leaves the screen. */
+  min-width: 0;
   margin-top: 0.5rem;
 }
 
@@ -1081,12 +1094,27 @@ label.match {
 }
 label.match:hover { background: var(--line); }
 label.match input { width: auto; flex-shrink: 0; }
+/* The row is a flex container in its own right; the same shrink rule applies. */
+label.match { min-width: 0; }
+/* The cover is a fixed size and must not be squeezed into a sliver when the
+   text beside it is long. */
+label.match .cover,
+label.match .cover-button { flex-shrink: 0; }
 
 .match-text { display: flex; flex-direction: column; min-width: 0; }
 .match-text .note { margin: 0; }
-/* One line each: a four-row picker that wraps stops being scannable. */
+/* One line each: a four-row picker that wraps stops being scannable, and a
+   truncated album name still tells you which release it is. */
 .match-text > * {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* The exception. "None of these" carries prose rather than metadata, and
+   ellipsing it hid the half that says what choosing it actually does. It has
+   no cover beside it, so the extra line costs nothing. */
+.match-none .match-text .note {
+  white-space: normal;
+  overflow: visible;
 }

@@ -223,14 +223,17 @@ function ScrobbleJot({ listen, onDone }: { listen: ListenView; onDone: () => voi
                 </span>
                 <span className="note">
                   {candidate.provider === "apple_music" ? "Apple Music" : "Spotify"}
+                  {/* Terse on purpose: this line sits beside a 44px cover in a
+                      ~265px column on a phone, and the wordier version was the
+                      first thing to be ellipsed away. */}
                   {candidate.durationDeltaMs !== null &&
-                    ` · length matches within ${(candidate.durationDeltaMs / 1000).toFixed(1)}s`}
+                    ` · within ${(candidate.durationDeltaMs / 1000).toFixed(1)}s`}
                 </span>
               </span>
             </label>
           ))}
 
-          <label className="match">
+          <label className="match match-none">
             <input
               type="radio"
               name="candidate"
