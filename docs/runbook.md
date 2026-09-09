@@ -26,18 +26,28 @@ processes, files, databases, and vhosts.
 ## Last.fm
 
 Optional, and off unless `LASTFM_API_KEY` is set — that absence is the feature
-flag, so an unconfigured deployment never mentions the integration. Get a key
-from <https://www.last.fm/api/account/create> (read-only endpoints; no callback
-URL). Add it to `/srv/trackjot/current/.env` and restart:
+flag, so an unconfigured deployment never mentions the integration.
+
+**Two values, and they do different jobs.** The key alone reads *public*
+profiles. `LASTFM_SHARED_SECRET` is what signs requests, and without it nobody
+who has enabled Last.fm's "hide recent listening" setting can connect at all —
+a public read of such a profile returns HTTP 403 / `error: 17`. Both are on the
+same page: <https://www.last.fm/api/accounts>. `check-env.mjs` reports a key
+without a secret as PARTIAL rather than letting it look configured.
 
 ```bash
-ssh root@<droplet> 'printf "LASTFM_API_KEY=%s\n" "<key>" >> /srv/trackjot/current/.env'
+ssh root@<droplet> 'printf "LASTFM_API_KEY=%s\nLASTFM_SHARED_SECRET=%s\n" "<key>" "<secret>" >> /srv/trackjot/current/.env'
 ssh root@<droplet> 'cd /srv/trackjot/current && /opt/node24/bin/node scripts/check-env.mjs .env'
 ssh root@<droplet> 'pm2 restart trackjot --update-env'
 ```
 
-It is a **server-side key only** — it must never be `NEXT_PUBLIC_*`, or it ships
-in the browser bundle for anyone to lift.
+Both are **server-side only** — neither may become `NEXT_PUBLIC_*`, or it ships
+in the browser bundle for anyone to lift. The secret in particular signs
+requests on users' behalf.
+
+**One credential pair serves every environment.** The OAuth callback is passed
+per request as `cb`, built from `APP_BASE_URL`, so localhost and production
+differ only in that variable — no second API account is needed.
 
 ## Backfilling cover art
 

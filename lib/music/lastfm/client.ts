@@ -25,7 +25,11 @@
  * unconfigured deployment simply never offers it.
  */
 
+import { createHash } from "node:crypto";
+
 const API = "https://ws.audioscrobbler.com/2.0/";
+/** Where a user is sent to approve access. Their host, over HTTPS. */
+const AUTH_PAGE = "https://www.last.fm/api/auth/";
 const TIMEOUT_MS = 8000;
 /** A listening feed is text; anything this large is not one. */
 const MAX_BYTES = 512 * 1024;
@@ -33,7 +37,15 @@ const MAX_BYTES = 512 * 1024;
 export class LastfmUnavailableError extends Error {
   constructor(
     message: string,
-    readonly reason: "not-configured" | "no-such-user" | "rate-limited" | "unavailable",
+    readonly reason:
+      | "not-configured"
+      | "no-such-user"
+      | "rate-limited"
+      | "unavailable"
+      /** The profile hides its listening, so a public read cannot see it. */
+      | "login-required"
+      /** The stored session key was rejected — revoked, or no longer valid. */
+      | "bad-session",
   ) {
     super(message);
     this.name = "LastfmUnavailableError";
@@ -42,6 +54,57 @@ export class LastfmUnavailableError extends Error {
 
 export function lastfmConfigured(): boolean {
   return Boolean(process.env.LASTFM_API_KEY);
+}
+
+/**
+ * Whether the *authenticated* flow is available.
+ *
+ * Signing requires the shared secret as well as the key. Without it the
+ * integration can still read public profiles, so this is a second, narrower
+ * flag rather than a reason to hide the feature entirely.
+ */
+export function lastfmAuthConfigured(): boolean {
+  return Boolean(process.env.LASTFM_API_KEY && process.env.LASTFM_SHARED_SECRET);
+}
+
+function sharedSecret(): string {
+  const secret = process.env.LASTFM_SHARED_SECRET;
+  if (!secret) {
+    throw new LastfmUnavailableError("Last.fm sign-in is not configured.", "not-configured");
+  }
+  return secret;
+}
+
+/**
+ * Last.fm's request signature.
+ *
+ * Every parameter except `format` and `callback`, sorted by name, concatenated
+ * as name-then-value with no separators, then the shared secret, then MD5.
+ * MD5 is not a choice — it is what their API specifies, and it is a signature
+ * over a request rather than a password hash, so its collision weakness is not
+ * the property being relied on.
+ */
+function sign(params: Record<string, string>): string {
+  const payload = Object.keys(params)
+    .filter((k) => k !== "format" && k !== "callback")
+    .sort()
+    .map((k) => `${k}${params[k]}`)
+    .join("");
+  return createHash("md5").update(payload + sharedSecret(), "utf8").digest("hex");
+}
+
+/**
+ * Where to send someone to approve access.
+ *
+ * The callback is passed per request rather than relying on the one configured
+ * on the API account, so the same credentials serve localhost and production —
+ * `APP_BASE_URL` is what differs between them.
+ */
+export function lastfmAuthUrl(callbackUrl: string): string {
+  const url = new URL(AUTH_PAGE);
+  url.searchParams.set("api_key", apiKey());
+  url.searchParams.set("cb", callbackUrl);
+  return url.toString();
 }
 
 /** One play as Last.fm reported it. Nothing here is resolved or trusted yet. */
@@ -104,11 +167,19 @@ function mbid(value: string | undefined): string | null {
 async function call(
   params: Record<string, string>,
   fetchImpl: typeof fetch,
+  options: { signed?: boolean } = {},
 ): Promise<RawResponse> {
   const url = new URL(API);
+  const withKey = { ...params, api_key: apiKey() };
+  // Signed BEFORE `format` is added, and `format` is excluded from the payload
+  // anyway — Last.fm signs the request, not the response encoding.
+  const finalParams = options.signed
+    ? { ...withKey, api_sig: sign(withKey), format: "json" }
+    : { ...withKey, format: "json" };
+
   // Built with URLSearchParams rather than string concatenation: a username is
   // user input and goes into a query string.
-  for (const [k, v] of Object.entries({ ...params, api_key: apiKey(), format: "json" })) {
+  for (const [k, v] of Object.entries(finalParams)) {
     url.searchParams.set(k, v);
   }
 
@@ -129,38 +200,60 @@ async function call(
     clearTimeout(timer);
   }
 
-  if (response.status === 429) {
-    throw new LastfmUnavailableError("Last.fm is rate-limiting us.", "rate-limited");
-  }
-  if (!response.ok) {
-    throw new LastfmUnavailableError("Last.fm returned an error.", "unavailable");
-  }
-
+  /**
+   * The body is read and parsed **whatever the status**, because Last.fm mixes
+   * the two conventions: some failures come back as HTTP 200 with an error code
+   * in the body, and others use a real status — 403 for a profile that hides its
+   * listening, 404 for a name that does not exist. Checking `response.ok` first
+   * threw all of those away as a generic "unavailable", which is how a hidden
+   * profile looked like an outage instead of an invitation to sign in.
+   */
   const text = await response.text();
   if (text.length > MAX_BYTES) {
     throw new LastfmUnavailableError("Last.fm returned an implausibly large reply.", "unavailable");
   }
 
-  let body: RawResponse;
+  let body: RawResponse | null = null;
   try {
     body = JSON.parse(text) as RawResponse;
   } catch {
-    throw new LastfmUnavailableError("Last.fm returned something unreadable.", "unavailable");
+    body = null;
   }
 
-  // Last.fm reports failures with HTTP 200 and an error code in the body, so
-  // checking the status alone would treat "no such user" as success.
-  if (body.error) {
+  if (body?.error) {
     // 6 is "Invalid parameters", which for these calls means the user does not
     // exist — worth distinguishing, because it is the one failure the person
-    // typing can actually fix.
+    // connecting can actually act on.
     if (body.error === 6) {
       throw new LastfmUnavailableError("Last.fm has no user by that name.", "no-such-user");
     }
     if (body.error === 29) {
       throw new LastfmUnavailableError("Last.fm is rate-limiting us.", "rate-limited");
     }
+    // 17 is "user required to be logged in": the profile hides its listening
+    // from the public API. This is the whole reason the approval flow exists,
+    // and it is a normal state rather than a fault — a great many people turn
+    // that setting on.
+    if (body.error === 17) {
+      throw new LastfmUnavailableError(
+        "That profile hides its listening from the public API.",
+        "login-required",
+      );
+    }
+    // 9 is an invalid session key: revoked from Last.fm's own settings, or
+    // expired. The user has to reconnect, and nothing else will fix it.
+    if (body.error === 9) {
+      throw new LastfmUnavailableError("The Last.fm connection needs renewing.", "bad-session");
+    }
     throw new LastfmUnavailableError("Last.fm couldn't answer that.", "unavailable");
+  }
+
+  // No usable error code, so fall back to what the status says.
+  if (response.status === 429) {
+    throw new LastfmUnavailableError("Last.fm is rate-limiting us.", "rate-limited");
+  }
+  if (!response.ok || !body) {
+    throw new LastfmUnavailableError("Last.fm returned something unreadable.", "unavailable");
   }
 
   return body;
@@ -207,14 +300,23 @@ export async function fetchRecentTracks(
   username: string,
   limit = 10,
   fetchImpl: typeof fetch = fetch,
+  sessionKey?: string | null,
 ): Promise<RecentTrack[]> {
+  /**
+   * With a session key the request is signed and made *as* the connected
+   * account, which is what lets it read a history the user has hidden from the
+   * public API. Without one this is an ordinary public read, which still works
+   * for the many profiles that do not hide anything.
+   */
   const body = await call(
     {
       method: "user.getrecenttracks",
       user: username,
       limit: String(Math.min(Math.max(limit, 1), 50)),
+      ...(sessionKey ? { sk: sessionKey } : {}),
     },
     fetchImpl,
+    { signed: Boolean(sessionKey) },
   );
 
   // Last.fm returns a bare object rather than an array when there is exactly
@@ -245,4 +347,41 @@ export async function lastfmUserExists(
     if (error instanceof LastfmUnavailableError && error.reason === "no-such-user") return false;
     throw error;
   }
+}
+
+/** What Last.fm returns once a user has approved access. */
+export interface LastfmSession {
+  /** The account name, as Last.fm reports it — never as the user typed it. */
+  username: string;
+  /** A credential. Never log, render, or export this. */
+  sessionKey: string;
+}
+
+/**
+ * Exchange a one-time token for a session key.
+ *
+ * The token arrives on our callback after the user approves on Last.fm's own
+ * site; this is the step that proves the approval was real, because it is
+ * signed with the shared secret that only this server holds.
+ *
+ * Session keys do not expire. They stop working when the user revokes access
+ * from their Last.fm settings, which surfaces as `bad-session` on the next call.
+ */
+export async function exchangeToken(
+  token: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<LastfmSession> {
+  const body = (await call(
+    { method: "auth.getSession", token },
+    fetchImpl,
+    { signed: true },
+  )) as RawResponse & { session?: { name?: string; key?: string } };
+
+  const username = body.session?.name?.trim();
+  const sessionKey = body.session?.key?.trim();
+
+  if (!username || !sessionKey) {
+    throw new LastfmUnavailableError("Last.fm did not complete the connection.", "unavailable");
+  }
+  return { username, sessionKey };
 }

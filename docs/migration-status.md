@@ -1132,15 +1132,74 @@ writes **empty strings** where a missing MBID belongs. The 20 integration tests
 pin the resolution fork above, sync idempotency, cross-user denial with a valid
 `source_ref`, and the now-playing reconciliation.
 
-### Not verified, and blocked on a key
+### Connecting authenticates to Last.fm — 2026-09-08, revised
 
-**`LASTFM_API_KEY` is not configured anywhere**, so none of this has run against
-the live API — only against recorded response shapes. A key is free and instant
-from <https://www.last.fm/api/account/create> (any application name; no callback
-URL needed for these read-only endpoints). Until one is set, the integration is
-invisible by design: `lastfmConfigured()` gates every surface, and an e2e test
-asserts the off state so an unconfigured deployment never offers a control that
-cannot work.
+The first cut read public profiles only. Samah pointed out the flaw with a
+counter-example (`womenaresmarter`), and he was right: Last.fm has a **"hide
+recent listening"** privacy setting, and a public read of such a profile fails.
+Confirmed against the live API — it returns **HTTP 403 with `error: 17`,
+"Login: User required to be logged in"**. Those users could never have imported
+anything.
+
+Connecting is now Last.fm's **web auth flow**: the user approves on Last.fm's
+own site, we exchange the returned token for a session key, and reads are signed
+as that account. Nothing is typed, so the connected name cannot be somebody
+else's profile — it is whatever Last.fm reports back.
+
+**This does not weaken the contract line it appears to touch.** "Treat a Last.fm
+username as a source setting, not TrackJot authentication" means Last.fm must
+never log anyone *into* TrackJot. TrackJot authenticating *to* Last.fm to read a
+feed the user owns is the opposite direction, and no TrackJot account depends
+on it.
+
+Details worth keeping:
+
+- **A `state` cookie guards the callback.** Without it, a crafted callback URL
+  carrying an attacker's approval token could attach the attacker's Last.fm
+  account to a signed-in user's TrackJot — login-CSRF — and the victim would be
+  reading a stranger's history believing it was theirs. `sameSite: lax`, not
+  `strict`, or the cookie would not survive Last.fm's redirect back.
+- **The session key is a credential.** Never selected into a page, response or
+  export; never logged; read only when signing. Stored unencrypted, on the
+  reasoning that an attacker who can read the table can almost certainly read
+  the `.env` holding any key — the protections that bind are the three above.
+  v1's actual sin was writing tokens to a log stream, and this column is where
+  that mistake is available to make again.
+- **Signing degrades rather than breaks.** A server holding session keys but
+  missing `LASTFM_SHARED_SECRET` reads publicly instead of failing every call.
+
+### A bug only the live API could show
+
+The unit tests were written believing Last.fm "reports failure with HTTP 200 and
+an error code in the body". That is true of *some* failures. It uses real status
+codes for others — **403** for a hidden profile, **404** for a name that does not
+exist — and the client checked `response.ok` before reading the body, so both
+arrived as a generic "unavailable". A hidden profile therefore looked like an
+outage rather than an invitation to sign in. The body is now parsed whatever the
+status, and both shapes are covered by tests.
+
+### Validation — 2026-09-08
+
+```
+npm run typecheck / lint                 clean
+npm test                                 163 passed  (+25 Last.fm unit)
+npm run test:integration                 212 passed  (+21 Last.fm integration)
+npm run build                            succeeded
+```
+
+Verified against the **live** API with the real key: `samah-` returns plays with
+timestamps preserved and `womenaresmarter` returns `login-required`, which is the
+case the approval flow exists to solve.
+
+### Blocked on `LASTFM_SHARED_SECRET`
+
+`LASTFM_API_KEY` is configured; **the shared secret is not**, and signing is
+impossible without it. So the approval flow itself — redirect, approve, exchange,
+signed read — has not been exercised end to end. It is on the same page the key
+came from: <https://www.last.fm/api/accounts>.
+
+One key and secret serve every environment: the callback is passed per request
+from `APP_BASE_URL`, so localhost and production differ only in that value.
 
 ## What is left before a public release
 

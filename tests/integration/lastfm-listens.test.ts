@@ -3,7 +3,7 @@ import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   LastfmNotLinkedError,
   importListen,
-  linkLastfm,
+  invalidateLastfmSession,
   syncRecentListens,
   unlinkLastfm,
 } from "@/lib/listens/service";
@@ -55,6 +55,7 @@ async function makeUser(lastfmUsername: string | null = "samah-") {
 beforeEach(async () => {
   await resetDatabase(prisma);
   vi.stubEnv("LASTFM_API_KEY", "test-key");
+  vi.stubEnv("LASTFM_SHARED_SECRET", "s3cr3t");
 });
 
 afterAll(async () => {
@@ -62,49 +63,19 @@ afterAll(async () => {
   await prisma.$disconnect();
 });
 
-describe("connecting a profile", () => {
-  it("stores the username after confirming the profile exists", async () => {
-    const user = await makeUser(null);
-    vi.stubGlobal("fetch", (async () =>
-      new Response(JSON.stringify({ user: { name: "samah-" } }))) as unknown as typeof fetch);
-
-    const result = await linkLastfm(user.id, "  samah-  ");
-
-    expect(result).toEqual({ ok: true, username: "samah-" });
-    const after = await prisma.user.findUniqueOrThrow({ where: { id: user.id } });
-    expect(after.lastfmUsername).toBe("samah-");
-    expect(after.lastfmLinkedAt).not.toBeNull();
-  });
-
-  /** Pasting the profile URL instead of the name is the obvious slip. */
-  it("accepts a pasted profile URL", async () => {
-    const user = await makeUser(null);
-    vi.stubGlobal("fetch", (async () =>
-      new Response(JSON.stringify({ user: {} }))) as unknown as typeof fetch);
-
-    expect(await linkLastfm(user.id, "https://www.last.fm/user/samah-/library")).toEqual({
-      ok: true,
-      username: "samah-",
-    });
-  });
-
-  it("refuses a name Last.fm does not have, and stores nothing", async () => {
-    const user = await makeUser(null);
-    vi.stubGlobal("fetch", (async () =>
-      new Response(JSON.stringify({ error: 6 }))) as unknown as typeof fetch);
-
-    const result = await linkLastfm(user.id, "definitely-not-a-user");
-
-    expect(result.ok).toBe(false);
-    expect((await prisma.user.findUniqueOrThrow({ where: { id: user.id } })).lastfmUsername).toBeNull();
-  });
-
+describe("disconnecting", () => {
   /**
    * Disconnecting a source is not a request to delete your own writing. The
    * opposite would make connecting it feel like a trap.
    */
-  it("keeps listens and notes when the profile is disconnected", async () => {
-    const user = await makeUser();
+  it("keeps listens and notes, and destroys the credential", async () => {
+    const user = await prisma.user.create({
+      data: {
+        authSubject: `s_${crypto.randomUUID()}`,
+        lastfmUsername: "samah-",
+        lastfmSessionKey: "a-session-key",
+      },
+    });
     vi.stubGlobal("fetch", lastfmResponse([play()]));
     await syncRecentListens(user.id);
     await importListen(user.id, {
@@ -114,6 +85,10 @@ describe("connecting a profile", () => {
 
     await unlinkLastfm(user.id);
 
+    const after = await prisma.user.findUniqueOrThrow({ where: { id: user.id } });
+    expect(after.lastfmUsername).toBeNull();
+    // A disconnected account must leave no usable credential behind.
+    expect(after.lastfmSessionKey).toBeNull();
     expect(await prisma.listen.count({ where: { ownerId: user.id } })).toBe(1);
     expect(await prisma.note.count({ where: { ownerId: user.id } })).toBe(1);
   });
@@ -121,6 +96,89 @@ describe("connecting a profile", () => {
   it("refuses to read a feed for a user who has connected none", async () => {
     const user = await makeUser(null);
     await expect(syncRecentListens(user.id)).rejects.toThrow(LastfmNotLinkedError);
+  });
+
+  it("forgets only the credential when Last.fm rejects it", async () => {
+    const user = await prisma.user.create({
+      data: {
+        authSubject: `s_${crypto.randomUUID()}`,
+        lastfmUsername: "samah-",
+        lastfmSessionKey: "revoked",
+      },
+    });
+
+    await invalidateLastfmSession(user.id);
+
+    const after = await prisma.user.findUniqueOrThrow({ where: { id: user.id } });
+    expect(after.lastfmSessionKey).toBeNull();
+    // The username stays, so the UI can say "reconnect" rather than "connect".
+    expect(after.lastfmUsername).toBe("samah-");
+  });
+});
+
+describe("reading as the connected account", () => {
+  /**
+   * The reason the approval flow exists: a profile that hides its listening
+   * returns error 17 to a public read, and a signed read gets through.
+   */
+  it("signs the request when a session key is held", async () => {
+    const user = await prisma.user.create({
+      data: {
+        authSubject: `s_${crypto.randomUUID()}`,
+        lastfmUsername: "womenaresmarter",
+        lastfmSessionKey: "the-session-key",
+      },
+    });
+
+    let seen: URL | null = null;
+    vi.stubGlobal("fetch", (async (url: URL) => {
+      seen = url;
+      return new Response(JSON.stringify({ recenttracks: { track: [play()] } }));
+    }) as unknown as typeof fetch);
+
+    await syncRecentListens(user.id);
+
+    expect(seen!.searchParams.get("sk")).toBe("the-session-key");
+    expect(seen!.searchParams.get("api_sig")).toMatch(/^[0-9a-f]{32}$/);
+  });
+
+  /**
+   * A server holding session keys but missing the shared secret cannot sign
+   * anything. Failing every read would be worse than reading publicly, which
+   * still works for every profile that hides nothing.
+   */
+  it("falls back to a public read when signing is impossible", async () => {
+    const user = await prisma.user.create({
+      data: {
+        authSubject: `s_${crypto.randomUUID()}`,
+        lastfmUsername: "samah-",
+        lastfmSessionKey: "unusable-without-a-secret",
+      },
+    });
+    vi.stubEnv("LASTFM_SHARED_SECRET", "");
+
+    let seen: URL | null = null;
+    vi.stubGlobal("fetch", (async (url: URL) => {
+      seen = url;
+      return new Response(JSON.stringify({ recenttracks: { track: [play()] } }));
+    }) as unknown as typeof fetch);
+
+    await expect(syncRecentListens(user.id)).resolves.toHaveLength(1);
+    expect(seen!.searchParams.get("sk")).toBeNull();
+  });
+
+  it("makes an ordinary public read when there is no session key", async () => {
+    const user = await makeUser();
+    let seen: URL | null = null;
+    vi.stubGlobal("fetch", (async (url: URL) => {
+      seen = url;
+      return new Response(JSON.stringify({ recenttracks: { track: [play()] } }));
+    }) as unknown as typeof fetch);
+
+    await syncRecentListens(user.id);
+
+    expect(seen!.searchParams.get("sk")).toBeNull();
+    expect(seen!.searchParams.get("api_sig")).toBeNull();
   });
 });
 

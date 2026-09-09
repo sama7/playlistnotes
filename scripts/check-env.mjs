@@ -87,6 +87,10 @@ const RULES = [
   // off. Present but malformed is the state worth catching, because the feature
   // would then appear in the UI and fail at call time.
   ["LASTFM_API_KEY", false, (v) => /^[0-9a-f]{32}$/i.test(v), "32 hex characters"],
+  // Required for the approval flow specifically: without it TrackJot can read
+  // public profiles but cannot sign a request, so a user who has hidden their
+  // listening cannot connect at all.
+  ["LASTFM_SHARED_SECRET", false, (v) => /^[0-9a-f]{32}$/i.test(v), "32 hex characters"],
 ];
 
 const env = parseEnv(readFileSync(path, "utf8"));
@@ -137,6 +141,19 @@ if (env.REQUIRE_INVITE_CODE === "true" && !(env.INVITE_CODE ?? "").trim()) {
  * was left in — and it reads as "Apple is not configured" rather than as the
  * error it is.
  */
+/**
+ * The Last.fm key alone reads public profiles; the secret is what allows the
+ * approval flow. Half a pair is a real state worth naming — the feature appears
+ * and then cannot connect anyone whose listening is hidden, which is the exact
+ * case it was added for.
+ */
+if (env.LASTFM_API_KEY && !env.LASTFM_SHARED_SECRET) {
+  console.log(
+    "\n  PARTIAL    Last.fm: key set, LASTFM_SHARED_SECRET missing. Public profiles will\n" +
+      "             work; connecting an account will not.",
+  );
+}
+
 const apple = ["APPLE_TEAM_ID", "APPLE_MUSIC_KEY_ID", "APPLE_MUSIC_PRIVATE_KEY"];
 const present = apple.filter((k) => env[k]);
 if (present.length > 0 && present.length < apple.length) {

@@ -2,9 +2,8 @@ import { DatePrecision, ListenSource, Provider, type Listen } from "@prisma/clie
 import { prisma } from "@/lib/db";
 import { normalizedKey } from "@/lib/music/normalize";
 import {
-  LastfmUnavailableError,
   fetchRecentTracks,
-  lastfmUserExists,
+  lastfmAuthConfigured,
   type RecentTrack,
 } from "@/lib/music/lastfm/client";
 import { createUserAuthoredRecording, resolveByProviderId } from "@/lib/music/resolve-recording";
@@ -70,66 +69,33 @@ export class LastfmNotLinkedError extends Error {
 }
 
 /**
- * Store a Last.fm username after checking the profile exists.
- *
- * The check catches a typo at the moment it is made, which is the whole of its
- * job. It deliberately does **not** establish that the person typing owns the
- * profile: the contract permits claiming verification only if the product says
- * the profile is verified, and it says no such thing. This is a feed to read.
- */
-export async function linkLastfm(
-  userId: string,
-  rawUsername: string,
-): Promise<{ ok: true; username: string } | { ok: false; message: string }> {
-  // Last.fm names are case-insensitive but display with case; store as typed,
-  // trimmed. A URL pasted instead of a name is a common slip worth absorbing.
-  const username = rawUsername
-    .trim()
-    .replace(/^https?:\/\/(www\.)?last\.fm\/user\//i, "")
-    .replace(/\/.*$/, "")
-    .trim();
-
-  if (!username) return { ok: false, message: "Enter your Last.fm username." };
-  if (!/^[A-Za-z0-9_.-]{2,64}$/.test(username)) {
-    return { ok: false, message: "That doesn't look like a Last.fm username." };
-  }
-
-  try {
-    if (!(await lastfmUserExists(username))) {
-      return { ok: false, message: `Last.fm has no user called “${username}”.` };
-    }
-  } catch (error) {
-    if (error instanceof LastfmUnavailableError) {
-      return {
-        ok: false,
-        message:
-          error.reason === "not-configured"
-            ? "Last.fm isn't set up on this server yet."
-            : "We couldn't reach Last.fm to check that name. Try again in a moment.",
-      };
-    }
-    throw error;
-  }
-
-  await prisma.user.update({
-    where: { id: userId },
-    data: { lastfmUsername: username, lastfmLinkedAt: new Date() },
-  });
-  return { ok: true, username };
-}
-
-/**
- * Forget the username.
+ * Disconnect the account.
  *
  * Listens already recorded are **kept**, and so are the notes written from
  * them. Disconnecting a source is not a request to delete your own history —
  * the writing is yours, and it stopped being Last.fm's the moment you wrote it.
+ *
+ * The session key is cleared, which is the part that matters: a disconnected
+ * account must leave no usable credential behind. Last.fm's own settings page
+ * is where access is revoked on their side, and this is deliberately not
+ * presented as doing that.
  */
 export async function unlinkLastfm(userId: string): Promise<void> {
   await prisma.user.update({
     where: { id: userId },
-    data: { lastfmUsername: null, lastfmLinkedAt: null },
+    data: { lastfmUsername: null, lastfmSessionKey: null, lastfmLinkedAt: null },
   });
+}
+
+/**
+ * Forget a session key that Last.fm has rejected.
+ *
+ * Keeping a revoked credential would mean every later read fails the same way
+ * with no way for the user to tell why. Clearing it puts the connection back
+ * into the state the UI knows how to explain: reconnect.
+ */
+export async function invalidateLastfmSession(userId: string): Promise<void> {
+  await prisma.user.update({ where: { id: userId }, data: { lastfmSessionKey: null } });
 }
 
 export async function dismissLastfmPrompt(userId: string): Promise<void> {
@@ -158,11 +124,28 @@ export async function syncRecentListens(
 ): Promise<ListenView[]> {
   const user = await prisma.user.findUniqueOrThrow({
     where: { id: userId },
-    select: { lastfmUsername: true },
+    // The session key is read here and nowhere else — it is a credential, and
+    // this is the one place that legitimately needs it.
+    select: { lastfmUsername: true, lastfmSessionKey: true },
   });
   if (!user.lastfmUsername) throw new LastfmNotLinkedError();
 
-  const tracks = await fetchRecentTracks(user.lastfmUsername, limit);
+  /**
+   * Signed as the connected account when a session key is held, which is what
+   * lets this read a history the user has hidden from the public API — the
+   * whole reason the approval flow exists. A profile that hides nothing still
+   * reads fine without one.
+   */
+  const tracks = await fetchRecentTracks(
+    user.lastfmUsername,
+    limit,
+    fetch,
+    // Only when signing is actually possible. A deployment that holds stored
+    // session keys but has lost the shared secret would otherwise fail every
+    // read outright, where degrading to a public one still works for every
+    // profile that hides nothing.
+    lastfmAuthConfigured() ? user.lastfmSessionKey : null,
+  );
 
   for (const track of tracks) {
     if (!track.playedAt) continue;

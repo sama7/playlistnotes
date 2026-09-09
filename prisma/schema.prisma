@@ -154,13 +154,36 @@ model User {
   displayName String? @map("display_name")
   avatarUrl   String? @map("avatar_url")
 
-  /// A Last.fm username, stored as a **source setting, not authentication**
-  /// (AGENTS.md, Last.fm adapter). Nothing is verified about ownership of the
-  /// profile and nothing may depend on it being the same person — it is the
-  /// name of a public feed to read, exactly like typing in a URL. It grants no
-  /// access to anything and is never a login.
+  /// The Last.fm account this user connected, as Last.fm itself reported it at
+  /// the end of its web auth flow — never typed in, so it cannot be someone
+  /// else's profile.
+  ///
+  /// Still a **source setting, not TrackJot authentication** (AGENTS.md,
+  /// Last.fm adapter). The distinction survives the addition of the auth flow
+  /// and is worth keeping straight: TrackJot authenticates *to* Last.fm in
+  /// order to read a feed the user owns. Last.fm never authenticates anyone
+  /// *into* TrackJot, and no TrackJot account depends on it.
   lastfmUsername String?   @map("lastfm_username")
   lastfmLinkedAt DateTime? @map("lastfm_linked_at") @db.Timestamptz(6)
+
+  /// A Last.fm session key, obtained through their web auth flow.
+  ///
+  /// **This is a credential and is treated as one.** It is never selected into
+  /// a page, an API response, or an export; it is never logged; and it is only
+  /// ever read by the Last.fm client when signing a request. v1's specific sin
+  /// was writing provider tokens into a log stream, and this column is the one
+  /// place in v2 where that mistake is available to make again.
+  ///
+  /// It is stored unencrypted, deliberately. The database is droplet-local and
+  /// its off-host backups are encrypted; an attacker able to read this table
+  /// can almost certainly read the `.env` that would hold any decryption key,
+  /// so encrypting here would buy the appearance of protection rather than the
+  /// substance. The protections that actually bind are the three above.
+  ///
+  /// What it grants: reading this user's own listening history even when they
+  /// have hidden it from the public API — which is the entire reason the flow
+  /// exists. Revoked from Last.fm's settings, or by disconnecting here.
+  lastfmSessionKey String? @map("lastfm_session_key")
   /// Set when the user waves away the connect prompt, so it is offered once
   /// rather than nagging on every visit.
   lastfmPromptDismissedAt DateTime? @map("lastfm_prompt_dismissed_at") @db.Timestamptz(6)

@@ -7,7 +7,7 @@ import {
   LastfmNotLinkedError,
   dismissLastfmPrompt,
   importListen,
-  linkLastfm,
+  invalidateLastfmSession,
   syncRecentListens,
   unlinkLastfm,
   type ListenView,
@@ -20,25 +20,6 @@ import {
  * id as the owner. Nothing here reads a user id from form data — the rule the
  * whole authorization model rests on.
  */
-
-export interface LinkState {
-  error?: string;
-  linked?: string;
-}
-
-export async function linkLastfmAction(
-  _previous: LinkState,
-  formData: FormData,
-): Promise<LinkState> {
-  const user = await requireUser();
-  const result = await linkLastfm(user.id, String(formData.get("username") ?? ""));
-
-  if (!result.ok) return { error: result.message };
-
-  revalidatePath("/notes");
-  revalidatePath("/account");
-  return { linked: result.username };
-}
 
 export async function unlinkLastfmAction(): Promise<void> {
   const user = await requireUser();
@@ -74,13 +55,30 @@ export async function recentListensAction(): Promise<RecentState> {
       return { ok: false, message: "No Last.fm account is connected." };
     }
     if (error instanceof LastfmUnavailableError) {
-      return {
-        ok: false,
-        message:
-          error.reason === "no-such-user"
-            ? "Last.fm no longer has a profile by that name. Check it in your account settings."
-            : "Last.fm isn't answering right now. Your notes are unaffected.",
-      };
+      /**
+       * A rejected session key is cleared rather than retried. Keeping it would
+       * make every later read fail identically with nothing the user could act
+       * on; clearing it puts the connection into the one state the UI can
+       * explain, which is "reconnect".
+       */
+      if (error.reason === "bad-session") {
+        await invalidateLastfmSession(user.id);
+        return {
+          ok: false,
+          message: "Your Last.fm connection was revoked. Reconnect it from your account.",
+        };
+      }
+      if (error.reason === "login-required") {
+        return {
+          ok: false,
+          message:
+            "Last.fm is hiding this profile's listening. Reconnect from your account to read it.",
+        };
+      }
+      if (error.reason === "no-such-user") {
+        return { ok: false, message: "Last.fm no longer has that profile." };
+      }
+      return { ok: false, message: "Last.fm isn't answering right now. Your notes are unaffected." };
     }
     throw error;
   }

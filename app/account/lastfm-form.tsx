@@ -1,38 +1,69 @@
 "use client";
 
-import { useActionState } from "react";
 import { ConfirmButton } from "@/components/confirm-button";
-import {
-  linkLastfmAction,
-  unlinkLastfmAction,
-  type LinkState,
-} from "@/app/listens/actions";
+import { unlinkLastfmAction } from "@/app/listens/actions";
 
 /**
- * Connect or disconnect a listening history.
+ * Connect or disconnect a Last.fm account.
  *
- * The copy is careful about one thing, because the distinction is the whole
- * basis on which this is allowed to exist: a Last.fm username here is **a
- * source setting, not a login**. TrackJot reads a public profile. It is not
- * given access to the account, it does not verify that you own the profile, and
- * nothing about your TrackJot account depends on it.
+ * Connecting is a **link, not a form**: it navigates to Last.fm, where the user
+ * approves on Last.fm's own site and comes back. Nothing is typed here, which
+ * is why the connected name cannot be somebody else's profile.
+ *
+ * The copy keeps one distinction straight, because it is the basis on which
+ * this is allowed to exist at all: TrackJot authenticates *to* Last.fm to read
+ * a feed the user owns. Last.fm never authenticates anyone *into* TrackJot.
  */
-export function LastfmForm({ current }: { current: string | null }) {
-  const [state, action, pending] = useActionState<LinkState, FormData>(linkLastfmAction, {});
-  const linked = state.linked ?? current;
-
+export function LastfmForm({
+  current,
+  authAvailable,
+  outcome,
+}: {
+  current: string | null;
+  /** False when the shared secret is missing, so approval cannot be completed. */
+  authAvailable: boolean;
+  /** What just happened, if the user has come back from Last.fm. */
+  outcome?: string;
+}) {
   return (
     <div className="capture">
-      {linked ? (
+      {outcome === "connected" && (
+        <p role="status" className="success">
+          Connected. Your recent plays are on your notes page.
+        </p>
+      )}
+      {outcome === "state" && (
+        <p role="alert" className="error">
+          That connection attempt didn&rsquo;t start here, so it was refused. Try again from
+          this page.
+        </p>
+      )}
+      {outcome === "denied" && (
+        <p role="status" className="prompt">
+          No problem — nothing was connected.
+        </p>
+      )}
+      {outcome === "failed" && (
+        <p role="alert" className="error">
+          Last.fm couldn&rsquo;t complete that just now. Nothing was changed.
+        </p>
+      )}
+      {outcome === "unconfigured" && (
+        <p role="alert" className="error">
+          Last.fm sign-in isn&rsquo;t set up on this server yet.
+        </p>
+      )}
+
+      {current ? (
         <>
           <p className="note">
             Connected to{" "}
             <a
-              href={`https://www.last.fm/user/${encodeURIComponent(linked)}`}
+              href={`https://www.last.fm/user/${encodeURIComponent(current)}`}
               target="_blank"
               rel="noopener noreferrer"
             >
-              <strong>{linked}</strong>
+              <strong>{current}</strong>
             </a>
             . Your recent plays appear on your notes page so you can jot one down while
             it&rsquo;s fresh.
@@ -48,7 +79,18 @@ export function LastfmForm({ current }: { current: string | null }) {
                     <strong>kept</strong> — disconnecting a source is not a request to
                     delete your own writing.
                   </p>
-                  <p>Recent plays will stop appearing on your notes page.</p>
+                  <p>
+                    Recent plays stop appearing, and the stored connection is deleted. You
+                    can also revoke it from{" "}
+                    <a
+                      href="https://www.last.fm/settings/applications"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      Last.fm&rsquo;s own settings
+                    </a>
+                    .
+                  </p>
                 </>
               }
               confirmLabel="Disconnect"
@@ -56,35 +98,26 @@ export function LastfmForm({ current }: { current: string | null }) {
             />
           </div>
         </>
+      ) : authAvailable ? (
+        /* A plain link: the browser has to make this navigation itself. */
+        <p>
+          <a className="download" href="/api/lastfm/start">
+            Connect Last.fm
+          </a>
+        </p>
       ) : (
-        <form action={action} className="row">
-          <label htmlFor="lastfm" className="visually-hidden">
-            Last.fm username
-          </label>
-          <input
-            id="lastfm"
-            name="username"
-            placeholder="Your Last.fm username"
-            autoComplete="off"
-            required
-          />
-          <button type="submit" disabled={pending}>
-            {pending ? "Checking…" : "Connect"}
-          </button>
-        </form>
-      )}
-
-      {state.error && (
-        <p role="alert" className="error">
-          {state.error}
+        <p className="note">
+          Last.fm sign-in isn&rsquo;t configured on this server.
         </p>
       )}
 
       <p className="note">
-        This reads a <strong>public profile</strong>. It is not a login and gives TrackJot
-        no access to your Last.fm account — the username is simply the name of a feed to
-        read. Last.fm doesn&rsquo;t license its cover art for use here, so plays show none
-        until the track is identified through a service that does.
+        You approve this on Last.fm&rsquo;s own site. It is <strong>not</strong> a way to
+        sign in to TrackJot, and TrackJot never sees your Last.fm password. Signing in is
+        what lets it read your history even if you have hidden it from the public — which
+        is exactly the case that a username alone cannot handle. Last.fm doesn&rsquo;t
+        license its cover art for use here, so plays show none until the track is
+        identified through a service that does.
       </p>
     </div>
   );

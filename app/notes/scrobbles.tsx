@@ -7,7 +7,6 @@ import type { ListenView } from "@/lib/listens/service";
 import {
   dismissLastfmPromptAction,
   importListenAction,
-  linkLastfmAction,
   recentListensAction,
   type RecentState,
 } from "@/app/listens/actions";
@@ -200,39 +199,21 @@ function ScrobbleJot({ listen, onDone }: { listen: ListenView; onDone: () => voi
  * dismissible on purpose: an integration that keeps asking is an advertisement.
  */
 export function LastfmPrompt() {
-  const [state, setState] = useState<{ error?: string; linked?: string }>({});
-  const [busy, setBusy] = useState(false);
   const [hidden, setHidden] = useState(false);
-
-  if (hidden || state.linked) return null;
-
-  async function connect(formData: FormData) {
-    setBusy(true);
-    setState(await linkLastfmAction({}, formData));
-    setBusy(false);
-  }
+  if (hidden) return null;
 
   return (
     <section className="lastfm-prompt">
       <strong>Connect Last.fm?</strong>
       <p className="note">
         If you scrobble, TrackJot can show what you have been playing so you can jot it
-        down while it is fresh. It reads a public profile — it is not a login, and it
-        gives TrackJot no access to your Last.fm account.
+        down while it is fresh. You approve it on Last.fm&rsquo;s own site — it is not a
+        way to sign in here, and TrackJot never sees your password.
       </p>
-      <form action={connect} className="row">
-        <label htmlFor="lastfm-username" className="visually-hidden">
-          Last.fm username
-        </label>
-        <input
-          id="lastfm-username"
-          name="username"
-          placeholder="Your Last.fm username"
-          autoComplete="off"
-        />
-        <button type="submit" disabled={busy}>
-          {busy ? "Checking…" : "Connect"}
-        </button>
+      <div className="row">
+        <a className="download" href="/api/lastfm/start">
+          Connect Last.fm
+        </a>
         <button
           type="button"
           className="linkish"
@@ -243,15 +224,10 @@ export function LastfmPrompt() {
         >
           Not now
         </button>
-      </form>
-      {state.error && (
-        <p role="alert" className="error">
-          {state.error}
-        </p>
-      )}
-      <p className="note">
-        You can also do this later from <Link href="/account">your account</Link>.
-      </p>
+        <span className="note">
+          Or later, from <Link href="/account">your account</Link>.
+        </span>
+      </div>
     </section>
   );
 }

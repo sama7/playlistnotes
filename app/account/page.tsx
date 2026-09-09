@@ -1,7 +1,7 @@
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { formatDay } from "@/lib/format-date";
-import { lastfmConfigured } from "@/lib/music/lastfm/client";
+import { lastfmAuthConfigured, lastfmConfigured } from "@/lib/music/lastfm/client";
 import { LastfmForm } from "./lastfm-form";
 import { UsernameForm } from "./username-form";
 
@@ -17,8 +17,13 @@ export const dynamic = "force-dynamic";
 // Renders as "Account · TrackJot" through the template in app/layout.tsx.
 export const metadata = { title: "Account" };
 
-export default async function AccountPage() {
-  const user = await requireUser();
+export default async function AccountPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ lastfm?: string }>;
+}) {
+  // Set by the Last.fm callback so the page can report what just happened.
+  const [{ lastfm: outcome }, user] = await Promise.all([searchParams, requireUser()]);
 
   const [notes, collections] = await Promise.all([
     prisma.note.count({ where: { ownerId: user.id } }),
@@ -41,7 +46,11 @@ export default async function AccountPage() {
       {lastfmConfigured() && (
         <>
           <h2>Listening history</h2>
-          <LastfmForm current={user.lastfmUsername} />
+          <LastfmForm
+            current={user.lastfmUsername}
+            authAvailable={lastfmAuthConfigured()}
+            outcome={outcome}
+          />
         </>
       )}
 
