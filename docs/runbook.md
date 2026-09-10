@@ -83,7 +83,13 @@ CI builds the artifact; the droplet only runs it. From a clean checkout:
 # with the runtime. Never `source .env` for a production build — the local file
 # holds the development key, and that combination took the site down on
 # 2026-08-13 while every health check stayed green.
-LIVE_PK=$(ssh root@<droplet> 'grep "^NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=" /srv/trackjot/current/.env | cut -d= -f2-')
+RAW=$(ssh root@<droplet> 'grep "^NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=" /srv/trackjot/current/.env | cut -d= -f2-')
+# The droplet's .env QUOTES its values, so `cut` hands back "pk_live_…" with the
+# quotes attached and a bare `pk_live_*` glob rejects a perfectly good key. A
+# guard that fails on valid input is worse than no guard: the next person to hit
+# it is tempted to skip it, and this one is the last thing standing between a
+# development key and production. Strip the quotes, then check.
+LIVE_PK=$(printf '%s' "$RAW" | sed -e 's/^["'"'"']//' -e 's/["'"'"']$//')
 case "$LIVE_PK" in pk_live_*) ;; *) echo "refusing: not a live key"; exit 1;; esac
 
 APP_BASE_URL=https://trackjot.com NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY="$LIVE_PK" npm run build
@@ -109,6 +115,17 @@ UA='Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, l
 for p in / /invite /about; do
   curl -s -o /dev/null -w "$p %{http_code}\n" -A "$UA" -H 'Accept: text/html' "https://trackjot.com$p"
 done
+```
+
+**And prove the new bundle is the one being served.** A restarted process and a
+green smoke check say the site is up; neither says it is running what was just
+copied. Fetch the stylesheet the live HTML references and look for something the
+deploy actually changed:
+
+```bash
+CSS=$(curl -s -A "$UA" -H 'Accept: text/html' https://trackjot.com/invite \
+  | grep -oE '_next/static/chunks/[a-zA-Z0-9._-]+\.css' | sort -u | head -1)
+curl -s "https://trackjot.com/$CSS" | grep -o '<a rule this deploy introduced>'
 ```
 
 CI builds the same artifact and is the preferred source, but downloading it needs
