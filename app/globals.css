@@ -346,6 +346,9 @@ ol.tracklist {
   min-width: 2ch;
   text-align: right;
   font-variant-numeric: tabular-nums;
+  /* Carries `.note` for its colour and size; the paragraph margin that comes
+     with it would drop the number below the title it numbers. */
+  margin: 0;
 }
 
 .track-main { flex: 1; min-width: 0; }
@@ -452,6 +455,30 @@ a.chip.tag.active .note { color: var(--bg); opacity: 0.7; }
   opacity: 0.7;
 }
 
+/**
+ * A `.note` used as a label in a flex row carries no block margin.
+ *
+ * `.note` is a paragraph style — 0.85rem with a 0.4rem top margin — and that
+ * margin is right when it sits under something. Used as a label *beside*
+ * something in a row, the margin pushes it down out of line with the controls
+ * it belongs to while `align-items: center` holds everything else level. That
+ * is why "Sort" sat lower than its two dropdowns, why "Dated now" sat lower
+ * than "Cancel", and why "Tags" sat lower than the tag chips.
+ *
+ * These containers space their children with `gap`, so a child's own margin was
+ * never doing anything but breaking the alignment.
+ */
+.row > .note,
+.browse-line > .note,
+.tag-list > .note {
+  margin: 0;
+}
+
+/** A hint that belongs to the field above it, not a new paragraph. */
+.field .hint {
+  margin: 0.35rem 0 0;
+}
+
 /* ---- csv import ---- */
 
 details.csv-import {
@@ -497,8 +524,27 @@ summary:focus-visible,
 
 /* Comfortable hit targets on touch, without enlarging the desktop layout. */
 @media (pointer: coarse) {
-  button, summary, a.chip.tag { min-height: 2.75rem; }
+  button { min-height: 2.75rem; }
+  /**
+   * A summary grows by padding rather than by `min-height`.
+   *
+   * It is a `list-item`, so a min-height leaves its text at the top of the box
+   * exactly as an inline-block does, and switching it to flex to centre that
+   * text costs it its disclosure marker. Padding reaches the same target height
+   * with the text where it belongs and the triangle intact.
+   */
+  summary { padding-block: 0.55rem; }
   button.linkish { min-height: 2.75rem; display: inline-flex; align-items: center; }
+  /**
+   * Tag chips get a smaller target than buttons do, deliberately.
+   *
+   * At 2.75rem a chip holding 0.75rem text is nearly four times the height of
+   * its own word, which is what made a lone "qawwali" read as a mistake rather
+   * than a control. 2rem with wider padding is still well above the 24px
+   * minimum in WCAG 2.5.8, sits in a row that wraps with its own gaps, and
+   * looks like something someone chose.
+   */
+  a.chip.tag { min-height: 2rem; padding-inline: 0.7rem; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -651,8 +697,20 @@ button.mode.active {
   max-width: 100%;
 }
 
+/**
+ * A chip centres its own contents.
+ *
+ * It was `inline-block`, which is fine until something gives it a height it did
+ * not ask for — and the touch rule below does exactly that, raising a tag chip
+ * to a 2.75rem tap target. An inline-block does not centre its line box in a
+ * taller box, so on a phone the word sat near the top of a tall pill with the
+ * label beside it stranded lower down. That is what "the qawwali tag spacing is
+ * still off on mobile" was. Flex centres it at any height.
+ */
 .chip {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
   font-size: 0.72rem;
   padding: 0.1rem 0.5rem;
   border: 1px solid var(--line);

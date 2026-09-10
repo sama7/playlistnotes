@@ -27,10 +27,17 @@ export function UsernameForm({ current }: { current: string | null }) {
           id="username"
           name="username"
           defaultValue={current ?? ""}
-          placeholder="3–30 characters: letters, numbers, underscores"
           autoComplete="username"
+          aria-describedby="hint-username"
           required
         />
+        {/* The rule used to be the placeholder, where on a phone it was cut to
+            "3–30 characters: letters, numbers, und" — and a placeholder also
+            disappears the moment someone starts typing, which is when the rule
+            is actually needed. Below the field it wraps, and it stays. */}
+        <p id="hint-username" className="note hint">
+          3–30 characters: letters, numbers, underscores.
+        </p>
       </div>
 
       {state.error && (

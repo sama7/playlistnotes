@@ -38,7 +38,10 @@ export function TagBar({
             href={t.name === active ? "/notes" : `/notes?tag=${encodeURIComponent(t.name)}`}
             className={`chip tag${t.name === active ? " active" : ""}`}
           >
-            {t.name} <span className="note">{t.count}</span>
+            {/* No space between: the chip is a flex row and spaces them with
+                `gap`, so a literal one would sit on top of that. */}
+            {t.name}
+            <span className="note">{t.count}</span>
           </Link>
         ))}
       </div>

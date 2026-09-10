@@ -24,7 +24,8 @@
     "postinstall": "prisma generate",
     "smoke": "node scripts/smoke.js",
     "start:prod": "node scripts/start-standalone.cjs",
-    "check:env": "node scripts/check-env.mjs"
+    "check:env": "node scripts/check-env.mjs",
+    "ci:status": "node scripts/ci-status.mjs"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

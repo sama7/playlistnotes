@@ -2,7 +2,13 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { SORT_OPTIONS, type SortDirection, type SortKey } from "@/lib/notes/browse";
+import {
+  SORT_OPTIONS,
+  defaultDirectionFor,
+  directionOptions,
+  type SortDirection,
+  type SortKey,
+} from "@/lib/notes/browse";
 
 /**
  * Sorting and filtering, as a plain GET form.
@@ -31,6 +37,19 @@ export function BrowseBar({
   active: number;
 }) {
   const [open, setOpen] = useState(active > 0);
+  /**
+   * The two sort controls are one decision, so they are held together.
+   *
+   * The direction options were static — "A → Z / oldest first" and "Z → A /
+   * newest first" — which meant that under a sort of "Recently written" the
+   * reader was shown an alphabetical label for a chronological ordering and had
+   * to discard the half that did not apply. The wording now comes from the
+   * field being sorted on, and changing the field resets the direction to that
+   * field's natural one, so picking "Track name" cannot leave "Newest first"
+   * standing next to it.
+   */
+  const [sortKey, setSortKey] = useState<SortKey>(sort);
+  const [dir, setDir] = useState<SortDirection>(direction);
 
   return (
     <form action="/notes" method="get" className="browse" role="search">
@@ -43,7 +62,7 @@ export function BrowseBar({
           name="q"
           type="search"
           defaultValue={q}
-          placeholder="Search your notes — by what you wrote, or by track or artist"
+          placeholder="Search your notes"
         />
         <button type="submit">Search</button>
       </div>
@@ -52,7 +71,16 @@ export function BrowseBar({
         <label htmlFor="sort" className="note">
           Sort
         </label>
-        <select id="sort" name="sort" defaultValue={sort}>
+        <select
+          id="sort"
+          name="sort"
+          value={sortKey}
+          onChange={(event) => {
+            const next = event.target.value as SortKey;
+            setSortKey(next);
+            setDir(defaultDirectionFor(next));
+          }}
+        >
           {SORT_OPTIONS.map((o) => (
             <option key={o.value} value={o.value}>
               {o.label}
@@ -63,9 +91,17 @@ export function BrowseBar({
         <label htmlFor="dir" className="visually-hidden">
           Direction
         </label>
-        <select id="dir" name="dir" defaultValue={direction}>
-          <option value="asc">A → Z / oldest first</option>
-          <option value="desc">Z → A / newest first</option>
+        <select
+          id="dir"
+          name="dir"
+          value={dir}
+          onChange={(event) => setDir(event.target.value as SortDirection)}
+        >
+          {directionOptions(sortKey).map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
         </select>
 
         <button type="button" className="linkish" onClick={() => setOpen((v) => !v)}>

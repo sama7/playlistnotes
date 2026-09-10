@@ -22,19 +22,61 @@ import { normalizeTagName } from "@/lib/notes/tags";
  *      from choosing arbitrary SQL.
  */
 
+/**
+ * `kind` is what the direction control reads to describe itself.
+ *
+ * Offering "Z → A / newest first" next to a sort of "Recently written" asked
+ * the reader to work out which half of the label applied to them, and half of
+ * it was always wrong. A sort by a date and a sort by a name are not the same
+ * question, so they do not get the same words.
+ */
 export const SORT_OPTIONS = [
-  { value: "recent", label: "Recently written" },
-  { value: "experienced", label: "When you heard it" },
-  { value: "track", label: "Track name" },
-  { value: "artist", label: "Artist name" },
-  { value: "album", label: "Album name" },
+  { value: "recent", label: "Recently written", kind: "time" },
+  { value: "experienced", label: "When you heard it", kind: "time" },
+  { value: "track", label: "Track name", kind: "alpha" },
+  { value: "artist", label: "Artist name", kind: "alpha" },
+  { value: "album", label: "Album name", kind: "alpha" },
 ] as const;
 
 export type SortKey = (typeof SORT_OPTIONS)[number]["value"];
 export type SortDirection = "asc" | "desc";
+type SortKind = (typeof SORT_OPTIONS)[number]["kind"];
 
 export function isSortKey(value: string): value is SortKey {
   return SORT_OPTIONS.some((o) => o.value === value);
+}
+
+function kindOf(sort: SortKey): SortKind {
+  return SORT_OPTIONS.find((o) => o.value === sort)?.kind ?? "time";
+}
+
+/**
+ * Which way round a sort naturally runs.
+ *
+ * Names read A→Z and dates read newest-first, so choosing a field is enough on
+ * its own — nobody should have to set two controls to express one intent. This
+ * is the single definition: the page derives its fallback from it, the browse
+ * query derives its default from it, and the control resets to it when the
+ * field changes.
+ */
+export function defaultDirectionFor(sort: SortKey): SortDirection {
+  return kindOf(sort) === "time" ? "desc" : "asc";
+}
+
+const DIRECTION_LABELS: Record<SortKind, Record<SortDirection, string>> = {
+  time: { desc: "Newest first", asc: "Oldest first" },
+  alpha: { desc: "Z → A", asc: "A → Z" },
+};
+
+/** The direction choices, worded for the field currently being sorted on. */
+export function directionOptions(
+  sort: SortKey,
+): Array<{ value: SortDirection; label: string }> {
+  const labels = DIRECTION_LABELS[kindOf(sort)];
+  return [
+    { value: "desc", label: labels.desc },
+    { value: "asc", label: labels.asc },
+  ];
 }
 
 /**
@@ -97,7 +139,7 @@ export async function browseNotes(
 ): Promise<NoteWithSubject[]> {
   const {
     sort = "recent",
-    direction = sort === "track" || sort === "artist" || sort === "album" ? "asc" : "desc",
+    direction = defaultDirectionFor(sort),
     limit = 100,
   } = options;
 

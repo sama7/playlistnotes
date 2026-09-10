@@ -2,6 +2,7 @@ import Link from "next/link";
 import { requireUser } from "@/lib/auth";
 import {
   browseNotes,
+  defaultDirectionFor,
   hasFilters,
   isSortKey,
   type SortDirection,
@@ -48,9 +49,9 @@ export default async function NotesPage({
   const requestedDirection: SortDirection | undefined =
     params.dir === "asc" || params.dir === "desc" ? params.dir : undefined;
   // Names read A→Z; dates read newest first. Each sort brings its own sensible
-  // default so the user picks a field, not a field and a direction.
-  const direction: SortDirection =
-    requestedDirection ?? (sort === "recent" || sort === "experienced" ? "desc" : "asc");
+  // default so the user picks a field, not a field and a direction. The rule
+  // lives in one place so the control's wording and the query cannot drift.
+  const direction: SortDirection = requestedDirection ?? defaultDirectionFor(sort);
 
   const filters = {
     track: (params.track ?? "").trim(),

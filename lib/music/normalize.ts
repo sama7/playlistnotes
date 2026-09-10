@@ -21,7 +21,15 @@ const DURATION_BUCKET_MS = 5_000;
 const FEATURED_ARTIST_PATTERN =
   /\s*[([]?\s*(feat\.?|featuring|ft\.?|with)\s+[^)\]]*[)\]]?\s*$/gi;
 
-function normalizeText(value: string): string {
+/**
+ * Casefold, strip accents and featured-artist suffixes, and reduce every run of
+ * punctuation to a single space.
+ *
+ * Exported because match candidacy needs exactly this comparison, and a second
+ * near-identical normalizer would be the thing that eventually disagrees with
+ * the stored `normalized_key`.
+ */
+export function normalizeText(value: string): string {
   return value
     .normalize("NFKD")
     // strip combining marks so "Beyoncé" and "Beyonce" agree

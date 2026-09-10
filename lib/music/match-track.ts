@@ -1,7 +1,7 @@
 import { Provider } from "@prisma/client";
 import { searchAppleTracks } from "@/lib/music/apple/itunes";
 import { searchSpotifyTracks } from "@/lib/music/spotify/web-api";
-import { normalizedKey } from "@/lib/music/normalize";
+import { normalizedKey, normalizeText } from "@/lib/music/normalize";
 import type { Artwork } from "@/lib/music/artwork";
 
 /**
@@ -30,7 +30,9 @@ import type { Artwork } from "@/lib/music/artwork";
  * "identifier acquisition" promotion path in AGENTS.md §3a.5.
  *
  * **Nothing here auto-links, however confident the score.** Ranking decides what
- * to show first; a person decides what is true.
+ * to show first; a person decides what is true. And a candidate that does not
+ * clear the plausibility floor below is never shown at all, however high a
+ * provider's own search ranked it.
  */
 
 export interface TrackCandidate {
@@ -50,6 +52,83 @@ export interface TrackCandidate {
 
 /** Two seconds of slack absorbs encoding differences between catalogues. */
 const CLOSE_ENOUGH_MS = 2000;
+
+/**
+ * ## The relevance floor
+ *
+ * Ranking is not the same as qualifying, and for a while this only ranked.
+ * Every candidate a provider returned for the search words was shown, ordered
+ * by score, so a scrobble of "206" by Joe James offered "Last Day (feat. Juicy
+ * J, Lloyd Banks)" by Joe Budden and two unrelated tracks called "Petit
+ * prince". Those scored zero or below and were still displayed, because the
+ * only thing standing between a result and the screen was `slice(0, limit)`.
+ *
+ * That is worse than showing nothing. A picker exists to let someone confirm an
+ * identity, and padding it with things that are visibly not the track teaches
+ * them to distrust the whole list — including the one row that is right.
+ *
+ * So candidacy is now a gate rather than a score: a suggestion has to plausibly
+ * BE this recording, on both title and artist, before it is eligible to be
+ * ranked at all. Duration still orders what survives; it cannot admit anything,
+ * and it cannot reject anything either — see `isPlausibleMatch`.
+ *
+ * The two sides are compared differently on purpose:
+ *
+ *   - **Title** must be a whole-word prefix match in one direction or the
+ *     other. Real catalogues add material to the end — "(Remastered 2011)",
+ *     "- Live", "(From the Motion Picture)" — and almost never to the front. A
+ *     containment test anywhere in the string would let a scrobble of "Love"
+ *     match half of recorded music.
+ *   - **Artist** is compared as a set of words, because a collaboration is
+ *     credited in whatever order each service prefers: "Anyasa" must match
+ *     "Anyasa & Kabeer" and "Kabeer, Anyasa" alike. Requiring one side's words
+ *     to be wholly contained in the other still rejects "Joe James" against
+ *     "Joe Budden", which shares only a first name.
+ */
+
+/** Whole-word prefix in either direction: "rasiya" ↔ "rasiya from the film". */
+function titlePlausible(candidate: string, known: string): boolean {
+  const a = normalizeText(candidate);
+  const b = normalizeText(known);
+  if (!a || !b) return false;
+  if (a === b) return true;
+  const [shorter, longer] = a.length < b.length ? [a, b] : [b, a];
+  return longer.startsWith(`${shorter} `);
+}
+
+/** One credit's words wholly contained in the other's, in either direction. */
+function artistPlausible(candidate: string, known: string): boolean {
+  const a = new Set(normalizeText(candidate).split(" ").filter(Boolean));
+  const b = new Set(normalizeText(known).split(" ").filter(Boolean));
+  if (a.size === 0 || b.size === 0) return false;
+  const [small, large] = a.size <= b.size ? [a, b] : [b, a];
+  for (const word of small) if (!large.has(word)) return false;
+  return true;
+}
+
+/**
+ * Could this candidate be the thing that was played?
+ *
+ * **Names only — duration is deliberately not a gate here.** It is tempting to
+ * disqualify a candidate whose length disagrees wildly, but that would throw
+ * away the extended mix and the live cut, which share a title with the original
+ * precisely because they *are* the same song, and which someone may well have
+ * been listening to. Last.fm scrobbles both as "Rasiya". Duration already earns
+ * its keep in `scoreCandidate`, where being wrong costs a candidate its place
+ * at the top of the list without costing it its place on the list.
+ *
+ * The junk this gate exists to remove never fails on length anyway: it fails on
+ * being a different song by a different artist.
+ */
+export function isPlausibleMatch(
+  candidate: { title: string; artistName: string },
+  known: { title: string; artistName: string },
+): boolean {
+  return (
+    titlePlausible(candidate.title, known.title) &&
+    artistPlausible(candidate.artistName, known.artistName)
+  );
+}
 
 /**
  * Score a candidate against what we know.
@@ -130,6 +209,7 @@ export async function findTrackCandidates(
   ];
 
   return raw
+    .filter((candidate) => isPlausibleMatch(candidate, known))
     .map((candidate) => ({ ...candidate, ...scoreCandidate(candidate, known) }))
     .sort((a, b) => b.score - a.score || (a.durationDeltaMs ?? 1e9) - (b.durationDeltaMs ?? 1e9))
     .slice(0, limit);

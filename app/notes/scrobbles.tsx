@@ -277,6 +277,16 @@ function ScrobbleJot({ listen, onDone }: { listen: ListenView; onDone: () => voi
 
       {candidates === null && <p className="note">Looking for this on Apple Music and Spotify…</p>}
 
+      {/* An empty result is a real answer, not a missing one. Saying so beats
+          silence, and beats padding the picker with tracks that are visibly not
+          this one — which is what it used to do. */}
+      {candidates !== null && candidates.length === 0 && (
+        <p className="note">
+          No confident match on Apple Music or Spotify. Your jot is kept as your own
+          entry — private to you, and without cover art.
+        </p>
+      )}
+
       {candidates !== null && candidates.length > 0 && (
         <fieldset className="sub-fields match-picker">
           <legend>Is this the one?</legend>

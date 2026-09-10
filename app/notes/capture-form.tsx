@@ -91,15 +91,27 @@ function LinkMode() {
               name="link"
               type="text"
               inputMode="url"
-              placeholder="A Spotify or Apple Music track, album or playlist"
+              /**
+               * Short on purpose. The guidance used to live here in full — "A
+               * Spotify or Apple Music track, album or playlist" — and on a
+               * phone the box is about 230px wide, so it was clipped to "A
+               * Spotify or Apple Music trac". A placeholder is the one piece of
+               * text in a form that cannot wrap, ellipsize or be scrolled to,
+               * so anything a reader actually needs belongs in the hint below,
+               * where it wraps and is readable whether or not the box is empty.
+               */
+              placeholder="Paste a link"
               defaultValue={lookup.link ?? ""}
-              aria-describedby={lookup.error ? "lookup-error" : undefined}
+              aria-describedby={lookup.error ? "lookup-error hint-link" : "hint-link"}
               required
             />
             <button type="submit" disabled={looking}>
               {looking ? "Looking…" : "Look up"}
             </button>
           </div>
+          <p id="hint-link" className="note hint">
+            A Spotify or Apple Music track, album or playlist.
+          </p>
         </div>
 
         {lookup.error && (

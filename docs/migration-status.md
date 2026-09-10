@@ -1468,15 +1468,60 @@ problems in generated code. Third config, same directory.
 ### How to check CI honestly
 
 The badge reflects the latest **completed** run, which during a push is the
-previous commit. Read the run for a specific SHA, or wait for the badge to
-change — never read it immediately after pushing and attribute it to what was
-just pushed.
+previous commit. Read the run for a specific SHA, never the badge.
+
+That is now a script rather than a discipline: `npm run ci:status -- <sha>`
+resolves runs by `head_sha` and says "no run exists yet" instead of falling back
+to anything. It also reads `x-ratelimit-remaining` off every response and stops
+while budget is left, with a hard cap on requests per invocation — because the
+two failures were one failure. Unauthenticated api.github.com allows 60 requests
+an hour, `gh` is not installed on this machine, and exhausting that budget is
+what pushed me to read the badge in the first place. Set `GITHUB_TOKEN` for the
+5,000/hour limit.
 
 ```
-npm test                                 178 passed
+npm test                                 190 passed
 npm run test:integration                 218 passed
 E2E_BASE_URL=… against the artifact       52 passed, 3 skipped
+npm run smoke http://localhost:3001      5 passed
 ```
+
+## The UI sweep, second pass
+
+A person found four more layout faults by eye after the first sweep reported
+three clean viewports. Each one is now a check, and each check immediately found
+the same fault somewhere the person had not looked yet.
+
+| Reported | Cause | Check added | Also found |
+| --- | --- | --- | --- |
+| Tag chip spacing still wrong on a phone | `.chip` was `inline-block`, so the 2.75rem touch tap-target left its text at the top of the box | `strandedText` — a box given a height must centre what is in it | `<summary>`, same cause |
+| "Dated now" below "Cancel" | `.note` is a paragraph style with a 0.4rem top margin, used as a label inside a centred flex row | `marginsInRows` — a row spaces with `gap`; a child's block margin only breaks alignment | "Sort", "Tags", and the track number in a collection |
+| "Sort" below its dropdowns | same | same | same |
+| Placeholders cut off mid-word | guidance living in a placeholder, which cannot wrap, ellipsize or be scrolled to | `clippedPlaceholders` — measures the string against the font and the box | the username rule on `/account` |
+
+**The reason the first sweep missed all of it**: it only ever called
+`setViewportSize`, which changes the width and nothing else. `@media (pointer:
+coarse)` therefore never matched, so the entire touch block — the one that
+raises controls to a tap target — was never exercised at any width. It was
+measuring a phone-width desktop, which is not a phone. The viewports now carry
+`hasTouch`, and the test asserts the media query actually matches before it
+measures anything.
+
+Two further product fixes in the same pass:
+
+- **A relevance floor on match suggestions.** Ranking is not qualifying: every
+  candidate a provider returned was shown, ordered by score, so a scrobble of
+  "206" by Joe James offered tracks by Joe Budden and Sadek. A suggestion now
+  has to plausibly *be* the recording — a whole-word title prefix and a
+  containing artist credit — before it is eligible to be ranked. Duration was
+  deliberately **not** made a gate: an extended mix is the same song and may be
+  what was heard, so length still ranks and never rejects. An empty result now
+  says so rather than showing nothing.
+- **Direction wording follows the sort field.** "Z → A / newest first" sat next
+  to "Recently written", asking the reader to discard the half that did not
+  apply. Time sorts now say "Newest first / Oldest first", name sorts "A → Z /
+  Z → A", and changing the field resets the direction to that field's natural
+  one. One definition, shared by the control and the query.
 
 ## What is left before a public release
 
