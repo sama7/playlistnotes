@@ -52,7 +52,13 @@ export function ExperiencedFields({
       />
       <input type="hidden" name="experiencedPrecisionOriginal" value={precision ?? ""} />
 
-      <div className="row">
+      {/*
+        A grid, not a `.row`. A flex row centres two stacked fields of unequal
+        height against each other — so "How sure" sat visibly below "Date" — and
+        never stops squeezing, so on a phone the date input was drawn straight
+        through the select beside it. `.field-row` stacks below 34rem instead.
+      */}
+      <div className="field-row">
         <div className="field">
           <label htmlFor={`${idPrefix}-experienced`}>Date</label>
           <input
@@ -112,6 +118,17 @@ export function PlaceFields({
         Coarse by default and only as precise as you ask for. A journal that
         quietly accumulates a movement history is a liability its writer never
         agreed to, so the exact option is a checkbox you tick, per note.
+
+        **The copy here used to promise machinery that does not exist.** It read
+        "Otherwise only the name above is kept — no coordinates", which invites
+        the reader to conclude that ticking the box produces coordinates. It
+        does not. Nothing in TrackJot geocodes a place, offers autocomplete, or
+        writes `place_lat`/`place_lon` — the columns exist and the service will
+        validate them, but no code path supplies them. All this box records is
+        what the writer meant by the words they typed.
+
+        Saying so in the control itself is the honest version, and it is also
+        the answer to the question the old wording raised.
       */}
       <label className="checkbox">
         <input
@@ -121,7 +138,9 @@ export function PlaceFields({
           defaultChecked={placePrecision === "exact"}
         />
         <span>
-          Remember this precisely. Otherwise only the name above is kept — no coordinates.
+          These words name an exact spot, not just the general area. Either way
+          TrackJot saves only what you typed — it never looks the place up and
+          never stores coordinates.
         </span>
       </label>
     </fieldset>

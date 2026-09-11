@@ -1523,6 +1523,51 @@ Two further product fixes in the same pass:
   Z → A", and changing the field resets the direction to that field's natural
   one. One definition, shared by the control and the query.
 
+## The UI sweep, third pass
+
+Three more faults found by eye on an iPhone, and — more usefully — two reasons
+the suite could not have found them.
+
+| Reported | Cause | Fix |
+| --- | --- | --- |
+| Date input drawn through the "How sure" select | `.field` is a flex item with `min-width: auto`, so it will not shrink below the intrinsic width of `<input type="date">` — which is far wider in iOS Safari than in headless Chromium | `.field-row` grid that stacks below 34rem; `min-width: 0` on everything sharing a row |
+| Select chevrons black in dark mode | `color-scheme` was declared nowhere, so the UA painted every native control for a light page | `color-scheme: light dark` on `:root` |
+| "Where you were" promised coordinates | copy described geocoding that does not exist | copy now states what actually happens |
+
+**Gap one: the sweep never opened anything.** It walked eight pages and reported
+them clean while the note editor — collapsed until someone presses Edit — had
+never been rendered into the DOM. `ExperiencedFields` and `PlaceFields` were not
+measured because they were not there. Every page is now measured twice: at rest,
+and again with every editor, tag form, filter panel and `<details>` open.
+
+**Gap two: Chromium only, light only.** A `webkit-layout` project now runs the
+layout specs in WebKit with `colorScheme: "dark"` — the engine and the theme the
+faults were actually found in. Native control chrome is invisible to a
+light-theme test by construction.
+
+### A check has to be shown failing
+
+The first attempt at a date-input check measured whether a control was *painted*
+outside its container. It caught nothing, because headless WebKit's date input
+is narrower than real iOS Safari's — the symptom does not reproduce on any
+engine available here. Measuring the cause does: a box that holds a control and
+shares a line must not have `min-width: auto`. That is a CSS fact, true in every
+engine, and reverting the fix proves it fails. It immediately found three more
+latent instances in `.row.actions` and `.row.tag-admin`.
+
+**No layout check is trusted here until it has been watched failing on the
+broken version.** Both new checks were.
+
+## Where you were — what it actually does
+
+Free text, and nothing else. There is no geocoding, no autocomplete, and no code
+path that writes `place_lat` or `place_lon`; the columns exist and `placeSchema`
+validates them, but nothing supplies them. The checkbox sets `place_precision`
+to `exact` rather than `area`, which is stored and exported and read by nothing.
+It is a stated intent about the words typed, not a switch that turns on
+location capture. **Open question for a product decision:** keep it as an
+intent marker, drop it, or make it real with a geocoder.
+
 ## What is left before a public release
 
 | # | Work | Est. | Blocked? |

@@ -70,6 +70,35 @@ export default defineConfig({
         storageState: STORAGE_STATE,
       },
     },
+    /**
+     * The layout specs again, in WebKit and in the dark.
+     *
+     * Both halves of that are a fix for something that reached production.
+     *
+     * **WebKit**, because Samah uses iOS Safari and the fault he found was a
+     * date input painted straight through the select beside it — and
+     * `<input type="date">` is the single control where intrinsic sizing
+     * differs most between engines. A Chromium-only sweep is structurally
+     * unable to see it.
+     *
+     * **Dark**, because native control chrome — a select's chevron, a date
+     * picker, a checkbox tick — is drawn by the UA and not by the stylesheet.
+     * Testing only the light theme tests the one theme where a missing
+     * `color-scheme` declaration looks perfectly fine.
+     *
+     * Scoped to the layout specs by `testMatch` rather than run across the
+     * whole suite: this is about how things are painted, and paying for a
+     * second full pass of the auth and privacy specs would buy nothing.
+     */
+    {
+      name: "webkit-layout",
+      testMatch: /(responsive|narrow-layout)\.spec\.ts/,
+      use: {
+        ...devices["Desktop Safari"],
+        colorScheme: "dark",
+        storageState: STORAGE_STATE,
+      },
+    },
   ],
 
   // Skipped when E2E_BASE_URL is set, so the same specs can run against a

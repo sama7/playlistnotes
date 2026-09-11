@@ -23,6 +23,16 @@ import { CN_TOWER, importSmallCollection, writeNote } from "./support/notes";
  *   5. **Margins fighting a row.** A flex row spaces its children with `gap`;
  *      a child's own block margin only knocks it out of line.
  *   6. **Clipped placeholders.** Text that cannot wrap must fit its box.
+ *   7. **Controls escaping their container.** `min-width: auto` on a flex or
+ *      grid item lets an intrinsically wide control — a date input above all —
+ *      paint straight through whatever is beside it.
+ *   8. **Native control chrome.** Select chevrons and date pickers are drawn by
+ *      the UA, which paints them for a light page unless `color-scheme` says so.
+ *
+ * Every page is measured twice: at rest, and again with every editor, tag form,
+ * filter panel and `<details>` opened. The second pass exists because the first
+ * reported eight clean pages while the note editor — collapsed until someone
+ * presses Edit — had never been rendered into the DOM at all.
  *
  * And all of it now runs with a **touch pointer** on the tablet and phone,
  * which it did not before — see `VIEWPORTS`.
@@ -298,6 +308,157 @@ async function clippedPlaceholders(page: Page): Promise<string[]> {
   });
 }
 
+/**
+ * A control drawn outside the box that was supposed to contain it.
+ *
+ * This is the engine-independent way to catch an intrinsic-width blowout. A
+ * flex or grid item defaults to `min-width: auto` and will not shrink below the
+ * intrinsic width of its contents; `<input type="date">` is the worst offender,
+ * because its intrinsic width is a whole localized date plus the picker's own
+ * chrome — and that is **much wider in iOS Safari than in headless Chromium**.
+ * The item then refuses to shrink and the input is painted straight through
+ * whatever sits beside it.
+ *
+ * Comparing a control against its own parent finds that wherever it happens,
+ * without needing the engine to reproduce one specific intrinsic width.
+ */
+async function overflowsItsContainer(page: Page): Promise<string[]> {
+  return page.evaluate(() => {
+    const bad: string[] = [];
+    const controls = Array.from(
+      document.querySelectorAll<HTMLElement>("input, select, textarea, button"),
+    );
+    for (const el of controls) {
+      const parent = el.parentElement;
+      if (!parent) continue;
+      const box = el.getBoundingClientRect();
+      const around = parent.getBoundingClientRect();
+      if (box.width === 0 || around.width === 0) continue;
+      // A parent that scrolls its own overflow is doing so deliberately.
+      const flow = getComputedStyle(parent).overflowX;
+      if (flow === "auto" || flow === "scroll") continue;
+
+      const over = Math.round(
+        Math.max(box.right - around.right, around.left - box.left),
+      );
+      if (over > 2) {
+        bad.push(
+          `${el.tagName.toLowerCase()}#${el.id || el.getAttribute("name") || "?"} ` +
+            `overflows ${parent.tagName.toLowerCase()}.${parent.className || "(none)"} by ${over}px`,
+        );
+      }
+    }
+    return [...new Set(bad)];
+  });
+}
+
+/**
+ * A form control sharing a line with something, in a box that cannot shrink.
+ *
+ * This is the check that actually catches the date/precision fault, and it had
+ * to be written twice. The obvious version measured whether a control was
+ * painted outside its container — and **it did not catch anything**, because
+ * headless WebKit's `<input type="date">` is narrower than real iOS Safari's.
+ * The fault reproduces on a phone in a way no engine available here reproduces,
+ * so measuring the symptom can never be reliable.
+ *
+ * The *cause* is engine-independent, and it is a CSS fact rather than a
+ * rendered one: a flex or grid item defaults to `min-width: auto`, which
+ * refuses to shrink below the intrinsic width of its contents. For a paragraph
+ * that is harmless. For a box holding a control whose intrinsic width is set by
+ * UA chrome nobody controls — a date picker, a select, a file input — it means
+ * the layout is one wide locale or one browser away from overlapping, and
+ * whether it does is not something this suite gets to observe.
+ *
+ * So the rule is stated directly: if a control shares a line, its box must be
+ * allowed to shrink. Cheap, total, and true in every engine.
+ */
+async function unshrinkableControlBoxes(page: Page): Promise<string[]> {
+  return page.evaluate(() => {
+    const bad: string[] = [];
+    for (const parent of Array.from(
+      document.querySelectorAll<HTMLElement>("body *"),
+    )) {
+      const style = getComputedStyle(parent);
+      const horizontalFlex =
+        (style.display === "flex" || style.display === "inline-flex") &&
+        !style.flexDirection.startsWith("column");
+      const multiColumnGrid =
+        (style.display === "grid" || style.display === "inline-grid") &&
+        style.gridTemplateColumns.split(" ").filter(Boolean).length > 1;
+      if (!horizontalFlex && !multiColumnGrid) continue;
+
+      const items = Array.from(parent.children) as HTMLElement[];
+      // A lone item has the whole line and cannot collide with a sibling.
+      if (items.length < 2) continue;
+
+      for (const item of items) {
+        if (!item.querySelector("input, select, textarea")) continue;
+        if (getComputedStyle(item).minWidth !== "auto") continue;
+        bad.push(
+          `${item.tagName.toLowerCase()}.${item.className || "(none)"} holds a control ` +
+            `and shares a line inside ${parent.tagName.toLowerCase()}.${parent.className || "(none)"}, ` +
+            `but has min-width:auto — it cannot shrink below its contents' intrinsic width`,
+        );
+      }
+    }
+    return [...new Set(bad)];
+  });
+}
+
+/**
+ * Native controls must be painted for the theme the page is actually wearing.
+ *
+ * A `<select>`'s chevron, a date picker, a checkbox tick and a scrollbar are
+ * drawn by the UA, not from the stylesheet, and the UA assumes a light page
+ * unless `color-scheme` says otherwise. Every colour token here flips on
+ * `prefers-color-scheme`, and none of that reached the chevrons — they stayed
+ * black on a near-black select. No amount of styling the select can fix it,
+ * because the chevron is not in the DOM and cannot be selected. Only the
+ * declaration can, so the declaration is what is asserted.
+ */
+async function nativeControlsFollowTheTheme(page: Page): Promise<string[]> {
+  return page.evaluate(() => {
+    const declared = getComputedStyle(document.documentElement).colorScheme;
+    if (!/dark/.test(declared)) {
+      return [
+        `:root declares color-scheme "${declared}" — native control chrome ` +
+          `(select chevrons, date pickers, checkboxes) is painted for a light page`,
+      ];
+    }
+    return [];
+  });
+}
+
+/**
+ * Open everything that hides behind a click, then measure again.
+ *
+ * **This is the gap that let the date/precision overlap reach production.** The
+ * sweep walked eight pages and reported them clean, but the note editor is
+ * collapsed until someone presses Edit, so `ExperiencedFields` and
+ * `PlaceFields` were never in the DOM at all. The checks were fine; they were
+ * pointed at markup that had not been rendered yet. A layout test that only
+ * ever sees a page's resting state is not testing the page.
+ */
+async function revealCollapsedSurfaces(page: Page): Promise<void> {
+  for (const name of [/^edit$/i, /^(edit|add) tags$/i, /more filters/i]) {
+    const buttons = page.getByRole("button", { name });
+    const count = await buttons.count();
+    for (let i = 0; i < count; i += 1) {
+      const button = buttons.nth(i);
+      if (await button.isVisible().catch(() => false)) {
+        await button.click().catch(() => {});
+      }
+    }
+  }
+  // <details> panels open without React, so set them directly.
+  await page.evaluate(() => {
+    for (const d of Array.from(document.querySelectorAll("details")))
+      d.open = true;
+  });
+  await page.waitForTimeout(150);
+}
+
 /** Seed enough content that pages are not empty shells. */
 async function seed(page: Page): Promise<string> {
   await writeNote(page, {
@@ -386,6 +547,38 @@ for (const viewport of VIEWPORTS) {
         }
         for (const clipped of await clippedPlaceholders(page)) {
           problems.push(`${name}: ${clipped}`);
+        }
+        for (const theme of await nativeControlsFollowTheTheme(page)) {
+          problems.push(`${name}: ${theme}`);
+        }
+
+        // Then again with every editor, tag form, filter panel and <details>
+        // open — the state a person is in when actually using the page.
+        await revealCollapsedSurfaces(page);
+
+        const opened = await sidewaysSpill(page);
+        if (opened.spill > 0) {
+          problems.push(
+            `${name} (opened): scrolls sideways by ${opened.spill}px — widest ${opened.widest}`,
+          );
+        }
+        for (const overlap of await overlappingControls(page)) {
+          problems.push(`${name} (opened): ${overlap}`);
+        }
+        for (const over of await overflowsItsContainer(page)) {
+          problems.push(`${name} (opened): ${over}`);
+        }
+        for (const rigid of await unshrinkableControlBoxes(page)) {
+          problems.push(`${name} (opened): ${rigid}`);
+        }
+        for (const stranded of await strandedText(page)) {
+          problems.push(`${name} (opened): ${stranded}`);
+        }
+        for (const margin of await marginsInRows(page)) {
+          problems.push(`${name} (opened): ${margin}`);
+        }
+        for (const clipped of await clippedPlaceholders(page)) {
+          problems.push(`${name} (opened): ${clipped}`);
         }
       }
 

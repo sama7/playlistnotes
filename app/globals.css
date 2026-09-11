@@ -1,4 +1,20 @@
+/**
+ * Tell the browser which themes this page actually supports.
+ *
+ * Every colour below flips on `prefers-color-scheme`, but the **native**
+ * controls do not read any of it. A `<select>`'s chevron, a date picker's
+ * calendar, a checkbox tick, a scrollbar — all of those are painted by the UA,
+ * and without this declaration the UA assumes a light page and paints them for
+ * one. On a dark background that produced a **black chevron on a near-black
+ * select**, which is what "the arrows in the dropdown are black" was. It is one
+ * line, and no amount of styling the select itself can substitute for it: the
+ * chevron is not in the DOM and cannot be selected.
+ *
+ * `light dark` rather than a hardcoded value, so it tracks the same OS setting
+ * the tokens do instead of becoming a second thing to keep in sync.
+ */
 :root {
+  color-scheme: light dark;
   --bg: #ffffff;
   --fg: #16161a;
   --muted: #6b6b76;
@@ -177,11 +193,44 @@ form.capture,
 
 form.capture { margin: 1.5rem 0 2rem; }
 
-.field { display: flex; flex-direction: column; gap: 0.3rem; }
+/**
+ * `min-width: 0` because a flex or grid item defaults to `min-width: auto`, and
+ * will not shrink below the intrinsic width of what is inside it. That is
+ * survivable for a text input and not at all survivable for
+ * `<input type="date">`, whose intrinsic width is a whole localized date plus
+ * the picker's own chrome — and which is far wider in iOS Safari than in
+ * headless Chromium. The field then refuses to shrink, the input overflows, and
+ * it is drawn straight through the control beside it.
+ */
+.field { display: flex; flex-direction: column; gap: 0.3rem; min-width: 0; }
 .field label { font-size: 0.8rem; font-weight: 600; color: var(--muted); }
 
 .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
 @media (max-width: 34rem) { .pair { grid-template-columns: 1fr; } }
+
+/**
+ * A pair of labelled fields on one line — until there isn't room for one line.
+ *
+ * This was a plain `.row`, and a flex row with `align-items: center` is the
+ * wrong tool twice over. Two stacked fields of unequal height get centred
+ * against each other, so the second one's label sits visibly lower than the
+ * first ("How sure" below "Date", by 14px in WebKit). And a flex row has no
+ * width at which it gives up and stacks — it just keeps squeezing until
+ * something overflows, which on a phone is the date input straight through the
+ * select beside it.
+ *
+ * A grid stacks at a stated width, and `align-items: start` keeps both labels
+ * on the same line whatever the controls below them do.
+ */
+.field-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+  align-items: start;
+}
+@media (max-width: 34rem) {
+  .field-row { grid-template-columns: 1fr; }
+}
 
 input, textarea {
   font: inherit;
@@ -194,6 +243,10 @@ input, textarea {
 }
 
 textarea { resize: vertical; }
+
+/* `width: 100%` above sets the preferred width; this stops the *intrinsic*
+   width of the picker chrome from pushing past the column anyway. */
+input[type="date"] { max-width: 100%; min-width: 0; }
 
 button {
   font: inherit;
@@ -209,6 +262,26 @@ button.danger { background: transparent; color: #b3261e; border-color: #b3261e; 
 
 .row { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
 .row form { display: inline; }
+
+/**
+ * Anything sharing a line here may shrink below its contents.
+ *
+ * A flex item defaults to `min-width: auto` and refuses to go narrower than its
+ * intrinsic width. That is harmless for text, which wraps, and a hazard for a
+ * box holding a form control, whose intrinsic width is decided by UA chrome
+ * nobody controls — a date picker, a select's chevron — and differs between
+ * engines. The box then will not shrink, the control is painted past it, and
+ * whatever is beside it gets drawn through. That is exactly how the date input
+ * ended up on top of the "How sure" select on an iPhone while every headless
+ * Chromium check reported the page clean.
+ *
+ * Stated once for the containers rather than patched per control, because the
+ * next control added to a row would otherwise inherit the same trap.
+ */
+.row > *,
+.browse-line > * {
+  min-width: 0;
+}
 
 .error {
   color: #b3261e;
