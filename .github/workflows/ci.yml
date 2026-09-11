@@ -323,8 +323,23 @@ jobs:
             sleep 2
           done
 
+      # Three reporters, and each one earns its place.
+      #
+      # `github` is the important one: it turns every failure into a workflow
+      # **annotation**, and annotations are readable through the public API
+      # without admin rights on the repository. Job logs are not — downloading
+      # them returns 403 — so when the browser suite failed on a7dbf8f the only
+      # thing visible from a developer machine was "Process completed with exit
+      # code 1". A failure nobody can read is a failure nobody can fix.
+      #
+      # `line` keeps the log itself readable, and `html` produces the report
+      # that the upload step below has always asked for and never found: passing
+      # `--reporter=line` on the command line overrode the config, so
+      # `playwright-report` was never written.
       - name: Run the browser suite
-        run: E2E_BASE_URL=http://localhost:3001 npx playwright test --reporter=line
+        env:
+          PLAYWRIGHT_HTML_OPEN: never
+        run: E2E_BASE_URL=http://localhost:3001 npx playwright test --reporter=github,line,html
 
       # Every run signs up fresh accounts; without this they accumulate in the
       # development instance forever. Runs even when the suite fails, because a
