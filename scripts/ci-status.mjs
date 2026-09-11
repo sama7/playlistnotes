@@ -42,10 +42,35 @@ const MAX_DELAY_MS = 90_000;
 
 const args = process.argv.slice(2);
 const wait = args.includes("--wait");
-const sha = args.find((a) => !a.startsWith("--")) ?? git("rev-parse", "HEAD");
 
 function git(...a) {
-  return execFileSync("git", a, { encoding: "utf8" }).trim();
+  // stderr piped rather than inherited, so a failed rev-parse produces this
+  // script's own message instead of git's usage text ahead of it.
+  return execFileSync("git", a, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
+}
+
+/**
+ * Always a full 40-character SHA.
+ *
+ * GitHub's `head_sha` filter does no prefix matching: an abbreviated SHA
+ * matches nothing and the API answers with an empty list, which this script
+ * would then report as "no workflow run exists" — confidently, and wrongly,
+ * about a run that was sitting right there in progress. That is the precise
+ * failure this script was written to prevent, so it had better not commit it
+ * itself. Anything git can resolve — a short SHA, a tag, `HEAD~2`, a branch —
+ * is resolved before it is asked about.
+ */
+const requested = args.find((a) => !a.startsWith("--")) ?? "HEAD";
+let sha;
+try {
+  sha = git("rev-parse", requested);
+} catch {
+  console.error(`Not a ref this repository knows: ${requested}`);
+  process.exit(4);
+}
+if (!/^[0-9a-f]{40}$/.test(sha)) {
+  console.error(`Could not resolve ${requested} to a full commit SHA.`);
+  process.exit(4);
 }
 
 /** owner/repo from whichever remote this repo actually uses — here it is
