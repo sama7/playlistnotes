@@ -291,7 +291,13 @@ jobs:
               ;;
           esac
 
-      - run: npx playwright install --with-deps chromium
+      # WebKit as well as Chromium, and that is not a nicety: the layout specs
+      # run a `webkit-layout` project because the faults people actually report
+      # are found on iOS Safari. `<input type="date">` has a far wider intrinsic
+      # width there than in Chromium, which is how a date input came to be
+      # painted straight through the select beside it while every Chromium check
+      # reported the page clean.
+      - run: npx playwright install --with-deps chromium webkit
 
       - name: Migrate the disposable database
         run: npx prisma migrate deploy
