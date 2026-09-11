@@ -497,7 +497,10 @@ form.search input { flex: 1; }
 
 /* ---- tags ---- */
 
-form.tag-form { display: flex; gap: 0.5rem; align-items: center; }
+/* Wraps, because inside a note card on a phone the form is ~266px and the
+   input's old 12rem floor plus a button did not fit — the button was pushed
+   8px outside the form it belongs to. */
+form.tag-form { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
 form.tag-form input { font-size: 0.85rem; padding: 0.3rem 0.45rem; }
 
 .tag-list { gap: 0.4rem; }
@@ -793,7 +796,11 @@ button.mode.active {
 
 /* ---- tag entry and management ---- */
 
-.tag-input { position: relative; flex: 1; min-width: 12rem; }
+/* 10rem, not the old 12rem: twelve plus a button did not fit a note card on a
+   phone and pushed the button outside its own form. The form wraps now, so the
+   input can keep a workable floor and the button takes its own line when it
+   has to. */
+.tag-input { position: relative; flex: 1; min-width: 10rem; }
 .tag-input input { font-size: 0.85rem; padding: 0.35rem 0.5rem; }
 
 ul.suggestions {

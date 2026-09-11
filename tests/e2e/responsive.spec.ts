@@ -297,7 +297,17 @@ async function clippedPlaceholders(page: Page): Promise<string[]> {
         field.clientWidth -
         parseFloat(style.paddingLeft) -
         parseFloat(style.paddingRight);
-      if (available > 0 && needed > available + 1) {
+      /**
+       * Fit with headroom, not merely fit.
+       *
+       * The font stack is `ui-sans-serif, system-ui, …`, which resolves to SF
+       * Pro on a Mac and to whatever `sans-serif` means on a Linux CI runner —
+       * and the latter is several percent wider. Three placeholders passed this
+       * check locally and failed it in CI for that reason alone. A string that
+       * only just fits in one font does not fit; it is one substitution away
+       * from being cut off, and the substitution is not hypothetical.
+       */
+      if (available > 0 && needed > available * 0.9) {
         bad.push(
           `${field.id || field.name || "input"}: placeholder needs ` +
             `${Math.round(needed)}px in a ${Math.round(available)}px box — “${text}”`,

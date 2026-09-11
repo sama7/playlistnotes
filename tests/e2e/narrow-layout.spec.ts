@@ -41,7 +41,9 @@ async function overflowOf(
     // rather than only that something is too wide.
     let widest: string | null = null;
     let worst = 0;
-    for (const el of Array.from(document.querySelectorAll<HTMLElement>("body *"))) {
+    for (const el of Array.from(
+      document.querySelectorAll<HTMLElement>("body *"),
+    )) {
       const spill = el.getBoundingClientRect().right - doc.clientWidth;
       if (spill > worst) {
         worst = spill;
@@ -98,15 +100,15 @@ const NOTE_EDITOR = `
     <fieldset class="sub-fields">
       <legend>When you heard it</legend>
       <p class="note">Leave this empty for "now". A gig in 2011 is dated 2011, not today.</p>
-      <div class="row">
-        <div class="field"><label>Date</label><input type="date"></div>
-        <div class="field"><label>How sure</label><select><option>That day</option></select></div>
+      <div class="field-row">
+        <div class="field"><label>Date</label><input id="d" type="date"></div>
+        <div class="field"><label>How sure</label><select id="p"><option>That day</option></select></div>
       </div>
     </fieldset>
     <fieldset class="sub-fields">
       <legend>Where you were</legend>
-      <div class="field"><label>Place</label><input placeholder="A city, a venue, someone's kitchen"></div>
-      <label class="checkbox"><input type="checkbox"><span>Remember this precisely. Otherwise only the name above is kept — no coordinates.</span></label>
+      <div class="field"><label>Place</label><input placeholder="A city or a venue"></div>
+      <label class="checkbox"><input type="checkbox"><span>These words name an exact spot, not just the general area. Either way TrackJot saves only what you typed — it never looks the place up and never stores coordinates.</span></label>
     </fieldset>
   </form>
 </li></ul></main>`;
@@ -117,13 +119,27 @@ test.describe("narrow viewports", () => {
     ["the note editor's date and place fields", NOTE_EDITOR],
   ] as const) {
     test(`${name} does not spill sideways on a phone`, async ({ page }) => {
-      const { documentOverflow, widest } = await overflowOf(page, markup, NARROW);
-      expect(documentOverflow, `widest offender: ${widest}`).toBeLessThanOrEqual(0);
+      const { documentOverflow, widest } = await overflowOf(
+        page,
+        markup,
+        NARROW,
+      );
+      expect(
+        documentOverflow,
+        `widest offender: ${widest}`,
+      ).toBeLessThanOrEqual(0);
     });
 
     test(`${name} does not spill sideways at 320px`, async ({ page }) => {
-      const { documentOverflow, widest } = await overflowOf(page, markup, NARROWEST);
-      expect(documentOverflow, `widest offender: ${widest}`).toBeLessThanOrEqual(0);
+      const { documentOverflow, widest } = await overflowOf(
+        page,
+        markup,
+        NARROWEST,
+      );
+      expect(
+        documentOverflow,
+        `widest offender: ${widest}`,
+      ).toBeLessThanOrEqual(0);
     });
   }
 
@@ -132,7 +148,9 @@ test.describe("narrow viewports", () => {
    * row to an ellipsis would pass an overflow check while being useless.
    */
   /** Ellipsing prose hid the half that says what the choice actually does. */
-  test("the opt-out explains itself in full rather than being truncated", async ({ page }) => {
+  test("the opt-out explains itself in full rather than being truncated", async ({
+    page,
+  }) => {
     await page.setViewportSize(NARROW);
     await page.setContent(
       `<!doctype html><html><head><style>${await stylesheet()}</style></head><body>${MATCH_PICKER}</body></html>`,
@@ -140,13 +158,17 @@ test.describe("narrow viewports", () => {
 
     const optOut = page.locator("label.match-none .note");
     const clipped = await optOut.evaluate(
-      (el) => el.scrollWidth > el.clientWidth + 1 || el.scrollHeight > el.clientHeight + 1,
+      (el) =>
+        el.scrollWidth > el.clientWidth + 1 ||
+        el.scrollHeight > el.clientHeight + 1,
     );
     expect(clipped, "the opt-out text is cut off").toBe(false);
     await expect(optOut).toContainText("no cover art");
   });
 
-  test("each candidate still shows its title and provider on a phone", async ({ page }) => {
+  test("each candidate still shows its title and provider on a phone", async ({
+    page,
+  }) => {
     await page.setViewportSize(NARROW);
     await page.setContent(
       `<!doctype html><html><head><style>${await stylesheet()}</style></head><body>${MATCH_PICKER}</body></html>`,
@@ -219,7 +241,10 @@ test.describe("the track playing right now", () => {
         (b) => Math.round(b.getBoundingClientRect().height * 10) / 10,
       ),
     );
-    expect(new Set(heights).size, `bar heights ${heights.join(", ")}`).toBeGreaterThan(1);
+    expect(
+      new Set(heights).size,
+      `bar heights ${heights.join(", ")}`,
+    ).toBeGreaterThan(1);
   });
 
   /**
@@ -227,7 +252,9 @@ test.describe("the track playing right now", () => {
    * which would freeze all three bars at the same starting height. Fixed uneven
    * heights still read as a meter while standing perfectly still.
    */
-  test("stands still but still reads as a meter under reduced motion", async ({ page }) => {
+  test("stands still but still reads as a meter under reduced motion", async ({
+    page,
+  }) => {
     await page.emulateMedia({ reducedMotion: "reduce" });
     await page.setViewportSize(NARROW);
     await page.setContent(
@@ -241,25 +268,123 @@ test.describe("the track playing right now", () => {
         animation: getComputedStyle(b).animationName,
       })),
     );
-    expect(bars.every((b) => b.animation === "none"), "animation should be off").toBe(true);
-    expect(new Set(bars.map((b) => b.h)).size, `heights ${bars.map((b) => b.h).join(", ")}`)
-      .toBeGreaterThan(1);
+    expect(
+      bars.every((b) => b.animation === "none"),
+      "animation should be off",
+    ).toBe(true);
+    expect(
+      new Set(bars.map((b) => b.h)).size,
+      `heights ${bars.map((b) => b.h).join(", ")}`,
+    ).toBeGreaterThan(1);
   });
 
   /** The meter is decorative; "Playing now" beside it carries the meaning. */
-  test("hides the decorative meter from assistive technology", async ({ page }) => {
+  test("hides the decorative meter from assistive technology", async ({
+    page,
+  }) => {
     await page.setViewportSize(NARROW);
     await page.setContent(
       `<!doctype html><html><head><style>${await stylesheet()}</style></head><body>${LIVE_STRIP}</body></html>`,
     );
-    await expect(page.locator(".playing-bars")).toHaveAttribute("aria-hidden", "true");
+    await expect(page.locator(".playing-bars")).toHaveAttribute(
+      "aria-hidden",
+      "true",
+    );
     await expect(page.getByText("Playing now")).toBeVisible();
   });
 
   for (const viewport of [NARROW, NARROWEST]) {
     test(`does not spill sideways at ${viewport.width}px`, async ({ page }) => {
-      const { documentOverflow, widest } = await overflowOf(page, LIVE_STRIP, viewport);
-      expect(documentOverflow, `widest offender: ${widest}`).toBeLessThanOrEqual(0);
+      const { documentOverflow, widest } = await overflowOf(
+        page,
+        LIVE_STRIP,
+        viewport,
+      );
+      expect(
+        documentOverflow,
+        `widest offender: ${widest}`,
+      ).toBeLessThanOrEqual(0);
     });
   }
+
+  /**
+   * The date input and the precision select must never share a line on a phone.
+   *
+   * This is the fault Samah photographed: the date input painted straight
+   * through the select beside it. It lives here, in a stylesheet harness, for a
+   * specific reason — this file is the one the WebKit project can run. The
+   * signed-in sweep cannot run there at all, because Clerk's development
+   * instance is on a different origin and WebKit's cookie policy turns its
+   * handshake into an endless redirect. Production's Clerk is first-party, so
+   * that is a limitation of the test harness rather than a product defect, but
+   * it does mean WebKit coverage has to come from markup that needs no session.
+   *
+   * Which is no loss: what WebKit uniquely reveals is intrinsic control widths
+   * and native chrome, and both are pure CSS.
+   */
+  test("the date and precision fields stack rather than share a line on a phone", async ({
+    page,
+  }) => {
+    await overflowOf(page, NOTE_EDITOR, NARROW);
+
+    const boxes = await page.evaluate(() => {
+      const at = (sel: string) => {
+        const el = document.querySelector(sel);
+        if (!el) return null;
+        const b = el.getBoundingClientRect();
+        return { left: b.left, right: b.right, top: b.top, bottom: b.bottom };
+      };
+      return { date: at("#d"), precision: at("#p") };
+    });
+
+    expect(
+      boxes.date,
+      "the date input should be in the harness",
+    ).not.toBeNull();
+    expect(
+      boxes.precision,
+      "the precision select should be in the harness",
+    ).not.toBeNull();
+
+    /**
+     * Stacked, not merely "not currently overlapping" — and that distinction is
+     * the whole point of this assertion.
+     *
+     * The first version of this test checked that the two boxes did not
+     * intersect, and it **passed against the broken stylesheet**, because
+     * headless WebKit's `<input type="date">` is narrower than the one on a
+     * real iPhone. The overlap Samah photographed simply does not reproduce on
+     * any engine available here, so testing for it tests nothing.
+     *
+     * What is reproducible is the rule that prevents it: below 34rem these two
+     * fields get their own lines. That depends on a media query rather than on
+     * anyone's intrinsic control width, so it holds identically in every engine
+     * — and a stylesheet that lets them share a line on a phone fails here even
+     * when nothing happens to collide in this particular browser.
+     */
+    const date = boxes.date!;
+    const precision = boxes.precision!;
+    expect(
+      date.bottom <= precision.top + 1,
+      `date ${JSON.stringify(date)} shares a line with precision ${JSON.stringify(precision)}`,
+    ).toBe(true);
+  });
+
+  /**
+   * Native control chrome has to be painted for the theme the page is wearing.
+   *
+   * A select's chevron, a date picker and a checkbox tick are drawn by the UA
+   * and read nothing from the stylesheet. Without a `color-scheme` declaration
+   * the UA assumes a light page, which is how the sort dropdowns ended up with
+   * black chevrons on a near-black background.
+   */
+  test("declares a colour scheme, so native controls are not painted for a light page", async ({
+    page,
+  }) => {
+    await overflowOf(page, NOTE_EDITOR, NARROW);
+    const declared = await page.evaluate(
+      () => getComputedStyle(document.documentElement).colorScheme,
+    );
+    expect(declared, "‽ :root must declare color-scheme").toMatch(/dark/);
+  });
 });

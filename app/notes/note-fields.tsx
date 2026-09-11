@@ -110,7 +110,7 @@ export function PlaceFields({
           id={`${idPrefix}-place`}
           name="placeLabel"
           defaultValue={placeLabel ?? ""}
-          placeholder="A city, a venue, someone's kitchen"
+          placeholder="A city or a venue"
           maxLength={200}
         />
       </div>

@@ -1558,6 +1558,45 @@ latent instances in `.row.actions` and `.row.tag-admin`.
 **No layout check is trusted here until it has been watched failing on the
 broken version.** Both new checks were.
 
+### What Ubuntu revealed that macOS could not
+
+Pushing the above turned CI red twice, and both causes were worth knowing.
+
+**Fonts.** The stack is `ui-sans-serif, system-ui, …`, which resolves to SF Pro
+on a Mac and to whatever `sans-serif` means on a Linux runner. Measured against
+the same strings, **Linux is 9–12% wider**. Three placeholders fit locally and
+were clipped in CI for that reason alone. The check now requires a placeholder
+to fit within 90% of its box rather than merely to fit: a string that only just
+fits in one font is one substitution away from being cut off, and the
+substitution is not hypothetical. Every placeholder now clears even a 0.72
+threshold locally, which leaves them under 0.81 on Linux.
+
+That second pass also found three genuine faults in the note editor the moment
+it was first measured — the place and tag placeholders, and a "Save tags" button
+pushed 8px outside its own form by a 12rem minimum on the input beside it.
+
+**WebKit cannot sign in to Clerk's development instance.** It lives on a
+different origin from the app under test, WebKit's cookie policy will not carry
+the handshake across that boundary, and sign-up spins between redirect URLs
+until the test times out. Production's Clerk is first-party on
+`clerk.trackjot.com`, so this is a property of the test setup, not a defect
+anyone would hit. The `webkit-layout` project therefore runs
+`narrow-layout.spec.ts` only — the stylesheet harness, which needs no session —
+and the date/precision and `color-scheme` guards were written there so WebKit
+still covers what only WebKit reveals.
+
+### A CI failure has to be readable
+
+The first red run could not be diagnosed from this machine at all: job logs
+need admin rights (403), and the report upload had never once found anything,
+because `--reporter=line` on the command line overrode the config that would
+have written it. The visible evidence was "Process completed with exit code 1".
+
+The suite now reports through `github`, `line` and `html` together. The `github`
+reporter emits each failure as a workflow **annotation**, and annotations are
+public — readable with an unauthenticated request, which is the only channel
+this machine has. That change is what produced both diagnoses above.
+
 ## Where you were — what it actually does
 
 Free text, and nothing else. There is no geocoding, no autocomplete, and no code

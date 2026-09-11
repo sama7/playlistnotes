@@ -66,7 +66,13 @@ export function TagInput({
         name={name}
         value={value}
         autoComplete="off"
-        placeholder="tags, separated by commas"
+        // Two example tags rather than a description of the format. The
+        // visually-hidden label already says "Tags, separated by commas" for
+        // anyone who needs it read out; visually, a comma between two words
+        // teaches the convention in a third of the width — and the description
+        // did not fit the box on a phone, where this input has about 139px of
+        // text room after its padding.
+        placeholder="qawwali, live"
         role="combobox"
         aria-expanded={showList}
         aria-controls={`${id}-suggestions`}

@@ -92,11 +92,26 @@ export default defineConfig({
      */
     {
       name: "webkit-layout",
-      testMatch: /(responsive|narrow-layout)\.spec\.ts/,
+      /**
+       * The stylesheet harness only — **not** the signed-in sweep.
+       *
+       * The signed-in specs cannot run in WebKit against Clerk's *development*
+       * instance: it lives on a different origin (`…accounts.dev`) from the app
+       * under test, WebKit's cookie policy will not carry the handshake across
+       * that boundary, and sign-up spins between redirect URLs until the test
+       * times out. Production's Clerk is first-party on `clerk.trackjot.com`,
+       * so this is a property of the test setup rather than a defect anyone
+       * would hit — but it does mean WebKit coverage has to come from markup
+       * that needs no session.
+       *
+       * That costs nothing worth having. What WebKit uniquely reveals is
+       * intrinsic control widths and native chrome, and `narrow-layout.spec.ts`
+       * renders the real stylesheet against real markup with no server at all.
+       */
+      testMatch: /narrow-layout\.spec\.ts/,
       use: {
         ...devices["Desktop Safari"],
         colorScheme: "dark",
-        storageState: STORAGE_STATE,
       },
     },
   ],
