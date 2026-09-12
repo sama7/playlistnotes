@@ -1607,6 +1607,53 @@ It is a stated intent about the words typed, not a switch that turns on
 location capture. **Open question for a product decision:** keep it as an
 intent marker, drop it, or make it real with a geocoder.
 
+## Verifying in CI's shape, not this machine's
+
+Three CI failures in a row came from the same shape of mistake — the local
+environment differs from the runner's, so a green local run proved nothing about
+what was about to go red.
+
+| # | Difference | How it showed up |
+| --- | --- | --- |
+| 1 | `npm run dev` on 3100 vs the packaged artifact on 3001 | a `networkidle` wait that can never settle on a signed-in page |
+| 2 | macOS fonts vs Linux fonts — `sans-serif` is **9–12% wider** on a runner | three placeholders fit here, clipped there |
+| 3 | `LASTFM_API_KEY` is set in the local `.env` and **unset in CI** | every "an unconfigured deployment never mentions Last.fm" test *skips* here and runs there |
+
+The third is the subtle one: a regression in that copy is invisible locally by
+construction. It caught a real one — the new account-deletion section named
+Last.fm on a deployment with no Last.fm key.
+
+`npm run verify:ci` now builds, packages, serves on 3001 **with the Last.fm
+credentials unset**, smokes it and runs the browser suite. That is the last
+check before a push, not a thing to reach for after a red run. The font
+difference is handled inside the suite instead, which requires a placeholder to
+fit with headroom rather than merely to fit.
+
+## Why the iPhone faults kept coming back
+
+`<input type="date">` had `appearance: auto`, and while that is true a native
+control's **used width comes from platform metrics, not from `width`** — which
+is only a preferred size. Those metrics differ enormously: iOS renders a picker
+whose minimum is a full localized date plus its chrome; headless WebKit renders
+something far narrower. Probed before the fix, the engine measured zero overflow
+in portrait and landscape while a real iPhone showed plenty. `max-width` and
+`min-width: 0` could not help, because they constrain a box the UA was already
+sizing by its own rules.
+
+`appearance: none` removes the variable instead of testing around it: the
+control becomes an ordinary box that obeys `width` everywhere, so the layout is
+correct *and* reproducible. The rule is asserted directly — a date input must
+have its appearance neutralized — which holds in any engine, unlike the pixels.
+
+**On devices nobody owns.** `safaridriver` is present (real desktop Safari);
+iOS Simulator needs full Xcode, which is not installed; real-device clouds are
+the state of the art and are paid. But the device matrix is unbounded and the
+CSS rules are not. Every layout fault found by hand so far traces to one of
+four causes — a box that cannot shrink (`min-width: auto`), a control the UA
+sizes (`appearance: auto`), text measured in a font that is not the reader's,
+and a layout with no width at which it stacks. Each is assertable as a rule that
+holds in every engine, which is what the suite now does.
+
 ## What is left before a public release
 
 | # | Work | Est. | Blocked? |

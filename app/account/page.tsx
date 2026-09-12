@@ -118,7 +118,10 @@ export default async function AccountPage({
         providers.
       </p>
     
-      <DangerZone username={user.username} />
+      <DangerZone
+        username={user.username}
+        listeningHistoryAvailable={lastfmConfigured()}
+      />
     </main>
   );
 }

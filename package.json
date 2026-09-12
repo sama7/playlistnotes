@@ -25,7 +25,8 @@
     "smoke": "node scripts/smoke.js",
     "start:prod": "node scripts/start-standalone.cjs",
     "check:env": "node scripts/check-env.mjs",
-    "ci:status": "node scripts/ci-status.mjs"
+    "ci:status": "node scripts/ci-status.mjs",
+    "verify:ci": "bash scripts/verify-ci-shape.sh"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

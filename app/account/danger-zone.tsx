@@ -17,12 +17,28 @@ import { deleteAccountAction, deleteListeningHistoryAction } from "./actions";
  * Both are stated in terms of what survives, because that is the part people
  * actually need to predict.
  */
-export function DangerZone({ username }: { username: string | null }) {
+export function DangerZone({
+  username,
+  listeningHistoryAvailable,
+}: {
+  username: string | null;
+  /**
+   * Gated on the same feature flag as the rest of the integration.
+   *
+   * Without this the account page named Last.fm on a deployment that has no
+   * Last.fm key — which the acceptance suite catches, correctly: an
+   * unconfigured deployment must never mention an integration it cannot
+   * perform. Offering to delete history that could not exist is also just
+   * confusing. Deleting the account is unconditional; it is not about any
+   * source.
+   */
+  listeningHistoryAvailable: boolean;
+}) {
   return (
     <>
       <h2>Deleting things</h2>
 
-      <DeleteHistory />
+      {listeningHistoryAvailable && <DeleteHistory />}
       <DeleteAccount username={username} />
     </>
   );
