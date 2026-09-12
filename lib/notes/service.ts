@@ -35,6 +35,8 @@ export const createNoteSchema = z.object({
   experiencedPrecision: z.nativeEnum(DatePrecision).nullish(),
   placeLabel: z.string().trim().max(200).nullish(),
   placePrecision: z.nativeEnum(PlacePrecision).nullish(),
+  /** Opaque, client-supplied, per-submission. See the column's comment. */
+  idempotencyKey: z.string().trim().min(8).max(100).nullish(),
 });
 
 /**
@@ -142,14 +144,33 @@ async function assertCollectionContext(
   }
 }
 
-export async function createNote(ownerId: string, input: CreateNoteInput): Promise<Note> {
+export async function createNote(
+  ownerId: string,
+  input: CreateNoteInput,
+  /** Runs inside a caller's transaction when one is supplied. */
+  tx: Pick<typeof prisma, "note"> = prisma,
+): Promise<Note> {
   const data = createNoteSchema.parse(input);
 
   if (data.collectionItemId) {
     await assertCollectionContext(ownerId, data.collectionItemId, data.recordingId);
   }
 
-  return prisma.note.create({
+  /**
+   * A retry of the same submission returns the note the first attempt wrote.
+   *
+   * Checked before inserting for the ordinary case, and caught below for the
+   * race where two retries arrive together — the unique index is what actually
+   * guarantees this, the lookup only avoids a pointless failed insert.
+   */
+  if (data.idempotencyKey) {
+    const existing = await tx.note.findFirst({
+      where: { ownerId, idempotencyKey: data.idempotencyKey },
+    });
+    if (existing) return existing;
+  }
+
+  return tx.note.create({
     data: {
       ownerId,
       recordingId: data.recordingId,
@@ -161,6 +182,7 @@ export async function createNote(ownerId: string, input: CreateNoteInput): Promi
       experiencedPrecision: data.experiencedPrecision ?? null,
       placeLabel: data.placeLabel ?? null,
       placePrecision: data.placePrecision ?? null,
+      idempotencyKey: data.idempotencyKey ?? null,
       visibility: Visibility.private,
     },
   });

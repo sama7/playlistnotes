@@ -32,10 +32,13 @@ export function NoteRow({
   note,
   baseUrl,
   allTags,
+  allPlaces = [],
 }: {
   note: NoteRowData;
   baseUrl: string;
   allTags: string[];
+  /** This writer's own previous places, offered as suggestions. */
+  allPlaces?: string[];
 }) {
   const [editing, setEditing] = useState(false);
   const [editingTags, setEditingTags] = useState(false);
@@ -95,7 +98,7 @@ export function NoteRow({
           <PlaceFields
             idPrefix={note.id}
             placeLabel={note.placeLabel}
-            placePrecision={note.placePrecision}
+            knownPlaces={allPlaces}
           />
           <div className="row">
             <button type="submit">Save</button>
@@ -110,7 +113,17 @@ export function NoteRow({
 
       <p className="note stamp">
         {note.experiencedLabel && <>Heard {note.experiencedLabel} · </>}
-        {note.placeLabel && <>{note.placeLabel} · </>}
+        {note.placeLabel && (
+          <>
+            {/* Clickable for the same reason a tag is: a place is only worth
+                recording if it leads back to everything else that happened
+                there. */}
+            <Link href={`/notes?place=${encodeURIComponent(note.placeLabel)}`} className="place">
+              {note.placeLabel}
+            </Link>{" "}
+            ·{" "}
+          </>
+        )}
         {describeTimestamps(note.createdAt, note.updatedAt)}
       </p>
 

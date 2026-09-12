@@ -227,6 +227,27 @@ export function Scrobbles({ username }: { username: string }) {
 function ScrobbleJot({ listen, onDone }: { listen: ListenView; onDone: () => void }) {
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  /**
+   * The writing is held in state, not left to the DOM.
+   *
+   * React resets an uncontrolled field once a form action resolves — and a
+   * returned validation error resolves perfectly normally. So a save that came
+   * back "write something about it first" or "Last.fm is unreachable" cleared
+   * the box, and the sentence someone had just typed was gone at exactly the
+   * moment they were being asked to try again. Holding the value means a failed
+   * save leaves the writing untouched and the retry is one click.
+   */
+  const [body, setBody] = useState("");
+  /**
+   * One key per editor, generated once.
+   *
+   * It makes the whole save replay-safe: every retry of *this* submission
+   * resolves to the same note. Opening a fresh editor mints a fresh key, so
+   * deliberately writing a second note about the same song still works.
+   */
+  const [idempotencyKey] = useState(
+    () => `jot_${listen.sourceRef}_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`,
+  );
   const [candidates, setCandidates] = useState<TrackCandidate[] | null>(null);
   /** Index into `candidates`, or -1 for "none of these". Best match preselected. */
   const [chosen, setChosen] = useState(0);
@@ -253,10 +274,22 @@ function ScrobbleJot({ listen, onDone }: { listen: ListenView; onDone: () => voi
 
   async function save(formData: FormData) {
     setSaving(true);
-    const result = await importListenAction({}, formData);
-    setSaving(false);
-    if (result.error) setError(result.error);
-    else onDone();
+    setError(null);
+    try {
+      const result = await importListenAction({}, formData);
+      if (result.error) setError(result.error);
+      else onDone();
+    } catch {
+      /**
+       * A thrown action — a dropped connection, a server error — used to leave
+       * the button stuck on "Saving…" forever with no explanation, because
+       * nothing reset the flag. The writing is safe in state either way, so the
+       * honest thing to say is that it did not save and can be tried again.
+       */
+      setError("That didn’t save. Your writing is still here — try again.");
+    } finally {
+      setSaving(false);
+    }
   }
 
   const pick = candidates && chosen >= 0 ? candidates[chosen] : null;
@@ -348,11 +381,14 @@ function ScrobbleJot({ listen, onDone }: { listen: ListenView; onDone: () => voi
       <label className="visually-hidden" htmlFor={`jot-${listen.sourceRef}`}>
         Your note about {listen.trackName}
       </label>
+      <input type="hidden" name="idempotencyKey" value={idempotencyKey} />
       <textarea
         id={`jot-${listen.sourceRef}`}
         name="body"
         rows={3}
         autoFocus
+        value={body}
+        onChange={(event) => setBody(event.target.value)}
         placeholder={`What do you want to remember about ${listen.trackName}?`}
       />
 

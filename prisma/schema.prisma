@@ -154,6 +154,19 @@ model User {
   displayName String? @map("display_name")
   avatarUrl   String? @map("avatar_url")
 
+  /// IANA zone the account reads and writes times in, e.g. "Europe/Berlin".
+  ///
+  /// Every timestamp is stored as an instant (timestamptz) and this decides
+  /// only how one is *rendered* and how a calendar-day filter is bounded. Both
+  /// matter: a listen at 11pm on the 8th in New York is the 9th in UTC, so a
+  /// filter with UTC bounds silently excluded the very day the reader could see
+  /// on screen.
+  ///
+  /// Null means "never chosen", which falls back to the product default rather
+  /// than to UTC — every existing note was written when that default was the
+  /// only behaviour, and flipping them to UTC would move their displayed times.
+  timeZone String? @map("time_zone")
+
   /// The Last.fm account this user connected, as Last.fm itself reported it at
   /// the end of its web auth flow — never typed in, so it cannot be someone
   /// else's profile.
@@ -183,7 +196,7 @@ model User {
   /// What it grants: reading this user's own listening history even when they
   /// have hidden it from the public API — which is the entire reason the flow
   /// exists. Revoked from Last.fm's settings, or by disconnecting here.
-  lastfmSessionKey String? @map("lastfm_session_key")
+  lastfmSessionKey        String?   @map("lastfm_session_key")
   /// Set when the user waves away the connect prompt, so it is offered once
   /// rather than nagging on every visit.
   lastfmPromptDismissedAt DateTime? @map("lastfm_prompt_dismissed_at") @db.Timestamptz(6)
@@ -518,6 +531,20 @@ model Note {
   collectionItem CollectionItem? @relation(fields: [collectionItemId], references: [id], onDelete: SetNull)
   tags           NoteTag[]
 
+  /// Deduplicates a retried save, and nothing else.
+  ///
+  /// A jot is two writes — create the note, then mark the listen imported — and
+  /// they were not atomic, so a failure between them left a note behind and a
+  /// retry wrote a second one. The writes are a transaction now, and this key
+  /// makes the *whole* operation replay-safe: one submission produces one note
+  /// however many times it is retried.
+  ///
+  /// Deliberately per-submission, not per-listen. Writing a second, different
+  /// note about the same song is a thing people do on purpose, and a fresh
+  /// editor generates a fresh key, so that still works.
+  idempotencyKey String? @map("idempotency_key")
+
+  @@unique([ownerId, idempotencyKey])
   @@index([ownerId, updatedAt(sort: Desc)])
   @@index([recordingId])
   @@index([collectionId])

@@ -246,7 +246,61 @@ textarea { resize: vertical; }
 
 /* `width: 100%` above sets the preferred width; this stops the *intrinsic*
    width of the picker chrome from pushing past the column anyway. */
-input[type="date"] { max-width: 100%; min-width: 0; }
+/**
+ * Take the UA's metrics out of the date input entirely.
+ *
+ * This is the third attempt at this control and the first one that can
+ * actually hold, so it is worth writing down why the first two could not.
+ *
+ * While `appearance` is `auto`, a native control's used width comes from the
+ * platform's own metrics for that widget — not from `width`, which is only a
+ * preferred size. Those metrics differ per platform, and for
+ * `<input type="date">` they differ enormously: iOS renders a native picker
+ * whose minimum is the full localized date plus its chrome, while headless
+ * WebKit on a Mac renders something far narrower. So the input overflowed its
+ * column on a real iPhone — through the fieldset border in portrait, and
+ * straight through the select beside it in landscape — while every engine
+ * available here measured it as comfortably inside.
+ *
+ * `max-width` and `min-width: 0` did not help, because they constrain a box
+ * that the UA was already sizing by its own rules.
+ *
+ * `appearance: none` ends that: the control becomes an ordinary box that obeys
+ * `width` in every engine, which makes its layout both correct *and*
+ * reproducible — the second part being the reason this kept coming back.
+ * Tapping it still opens the native date picker on iOS; only the metrics
+ * change. Selects deliberately keep their appearance, because their chevron is
+ * part of it, and are constrained by width instead.
+ */
+input[type="date"] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  /* iOS centres a native date input's value; every other field here is left
+     aligned, and once the native metrics are gone there is no reason for this
+     one to be the exception. */
+  text-align: left;
+  /* An `appearance: none` date input has no intrinsic height on iOS, so it is
+     stated rather than inherited from the picker that is no longer there. */
+  min-height: 2.6rem;
+}
+
+/* A control in a shared row fills its column rather than sizing to content, so
+   two columns cannot add up to more than the row. */
+.field-row select,
+.field-row input {
+  width: 100%;
+  min-width: 0;
+}
+
+/* Nothing with a UA-decided intrinsic width may exceed its container. */
+input,
+select,
+textarea {
+  max-width: 100%;
+}
 
 button {
   font: inherit;
@@ -792,6 +846,20 @@ button.mode.active {
   border: 1px solid var(--line);
   border-radius: 999px;
   white-space: nowrap;
+}
+
+/* A place reads as part of the note's stamp line, not as a button — but it is a
+   link, so it says so on hover and focus. */
+.stamp .place {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  text-underline-offset: 2px;
+}
+.stamp .place:hover,
+.stamp .place:focus-visible {
+  color: var(--accent);
+  text-decoration-style: solid;
 }
 
 /* ---- tag entry and management ---- */

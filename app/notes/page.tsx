@@ -9,8 +9,10 @@ import {
   type SortKey,
 } from "@/lib/notes/browse";
 import { toNoteRow } from "@/lib/notes/list";
+import { DEFAULT_TIME_ZONE, dayBoundsInZone } from "@/lib/format-date";
 import { searchNotes } from "@/lib/notes/search";
 import { listTags } from "@/lib/notes/tags";
+import { listPlaces } from "@/lib/notes/places";
 import { lastfmAuthConfigured, lastfmConfigured } from "@/lib/music/lastfm/client";
 import { BrowseBar } from "./browse-bar";
 import { LastfmPrompt, Scrobbles } from "./scrobbles";
@@ -63,9 +65,13 @@ export default async function NotesPage({
   };
   const activeFilters = Object.values(filters).filter(Boolean).length + (tagFilter ? 1 : 0);
 
+  const zone = user.timeZone ?? DEFAULT_TIME_ZONE;
+  const fromBounds = filters.from ? dayBoundsInZone(filters.from, zone) : null;
+  const toBounds = filters.to ? dayBoundsInZone(filters.to, zone) : null;
+
   // Every path is owner-scoped in the query itself, never filtered afterwards.
   const results = query ? await searchNotes(user.id, query) : null;
-  const [notes, tags] = await Promise.all([
+  const [notes, tags, places] = await Promise.all([
     query
       ? Promise.resolve([])
       : browseNotes(user.id, {
@@ -74,18 +80,26 @@ export default async function NotesPage({
           artist: filters.artist || undefined,
           album: filters.album || undefined,
           place: filters.place || undefined,
-          // A date input gives a local calendar day; the bounds are widened to
-          // cover it so "heard until the 3rd" includes the 3rd.
-          from: filters.from ? new Date(`${filters.from}T00:00:00Z`) : undefined,
-          to: filters.to ? new Date(`${filters.to}T23:59:59Z`) : undefined,
+          /**
+           * Bounds built in the reader's own zone, not in UTC.
+           *
+           * Pasting `T00:00:00Z` onto a date input's value made the filter
+           * disagree with the page it was filtering: a listen at 11pm on the
+           * 8th in New York is 03:00 on the 9th in UTC, so "heard until the
+           * 8th" excluded a row displayed, correctly, as the 8th.
+           */
+          from: fromBounds?.start,
+          to: toBounds?.end,
           sort,
           direction,
         }),
     listTags(user.id),
+    listPlaces(user.id),
   ]);
 
   const baseUrl = process.env.APP_BASE_URL ?? "http://localhost:3100";
   const tagNames = tags.map((t) => t.name);
+  const placeNames = places.map((p) => p.label);
   const filtered = hasFilters({
     tag: tagFilter,
     track: filters.track,
@@ -205,6 +219,7 @@ export default async function NotesPage({
                   note={toNoteRow(note)}
                   baseUrl={baseUrl}
                   allTags={tagNames}
+                  allPlaces={placeNames}
                 />
               ))}
             </ul>

@@ -180,12 +180,45 @@ async function persistPlay(userId: string, track: RecentTrack): Promise<void> {
     orderBy: { playedAt: "desc" },
   });
 
-  if (pending && playKey(pending.artistName, pending.trackName) === playKey(track.artistName, track.trackName)) {
-    await prisma.listen.update({
-      where: { id: pending.id },
-      data: { sourceRef: track.sourceRef, playedAt, sourceUrl: track.url },
+  if (
+    pending &&
+    playKey(pending.artistName, pending.trackName) === playKey(track.artistName, track.trackName)
+  ) {
+    /**
+     * Only if that completed play is not already recorded.
+     *
+     * Renaming the pending row onto `track.sourceRef` collides with the unique
+     * `(owner, source, source_ref)` when a row for that scrobble already
+     * exists — which happens whenever a sync reports the same completed play
+     * twice, or the same song was heard earlier and is being heard again.
+     * Where the destination exists, the pending row has nothing to fold into
+     * it and is simply dropped; where it does not, the rename is safe.
+     *
+     * A collision is resolved in favour of **keeping the plays separate**,
+     * which is the rule the whole listens model is built on: two hearings of
+     * one song are two events, and merging them silently is the one outcome
+     * that destroys information.
+     */
+    const alreadyRecorded = await prisma.listen.findUnique({
+      where: {
+        ownerId_source_sourceRef: {
+          ownerId: userId,
+          source: ListenSource.lastfm,
+          sourceRef: track.sourceRef,
+        },
+      },
+      select: { id: true },
     });
-    return;
+
+    if (!alreadyRecorded) {
+      await prisma.listen.update({
+        where: { id: pending.id },
+        data: { sourceRef: track.sourceRef, playedAt, sourceUrl: track.url },
+      });
+      return;
+    }
+    // Fall through and upsert the real row; the pending one keeps its own
+    // identity rather than being destroyed, since it may carry a jot.
   }
 
   await prisma.listen.upsert({
@@ -308,6 +341,8 @@ export async function importListen(
      * tampered field cannot inject a title, an album, or an artwork URL.
      */
     confirmed?: { provider: Provider; providerId: string } | null;
+    /** Per-submission key, so a retried save produces one note, not two. */
+    idempotencyKey?: string | null;
   },
 ): Promise<{ noteId: string }> {
   let listen = await prisma.listen.findUnique({
@@ -349,16 +384,34 @@ export async function importListen(
   const recordingId =
     listen.recordingId ?? (await resolveRecordingFor(userId, listen, input.confirmed)).id;
 
-  const note = await createNote(userId, {
-    recordingId,
-    body: input.body,
-    experiencedAt: listen.playedAt,
-    experiencedPrecision: DatePrecision.time,
-  });
+  /**
+   * Both writes, or neither.
+   *
+   * This used to be two statements. A failure between them left a note written
+   * and the listen still unimported, so the obvious thing to do next — press
+   * Save again — wrote a *second* note about the same play. Together with the
+   * idempotency key, one submission now produces exactly one note no matter how
+   * many times it is retried or where it fails.
+   */
+  const note = await prisma.$transaction(async (tx) => {
+    const created = await createNote(
+      userId,
+      {
+        recordingId,
+        body: input.body,
+        experiencedAt: listen.playedAt,
+        experiencedPrecision: DatePrecision.time,
+        idempotencyKey: input.idempotencyKey ?? null,
+      },
+      tx,
+    );
 
-  await prisma.listen.update({
-    where: { id: listen.id },
-    data: { recordingId, importedAt: new Date() },
+    await tx.listen.update({
+      where: { id: listen.id },
+      data: { recordingId, importedAt: new Date() },
+    });
+
+    return created;
   });
 
   return { noteId: note.id };

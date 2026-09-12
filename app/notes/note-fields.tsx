@@ -1,6 +1,6 @@
 "use client";
 
-import type { DatePrecision, PlacePrecision } from "@prisma/client";
+import type { DatePrecision } from "@prisma/client";
 import { toDateInputValue } from "@/lib/format-date";
 
 /**
@@ -95,54 +95,43 @@ export function ExperiencedFields({
 export function PlaceFields({
   idPrefix,
   placeLabel,
-  placePrecision,
+  knownPlaces = [],
 }: {
   idPrefix: string;
   placeLabel: string | null;
-  placePrecision: PlacePrecision | null;
+  /** This writer's own previous places, most used first. */
+  knownPlaces?: string[];
 }) {
   return (
     <fieldset className="sub-fields">
       <legend>Where you were</legend>
       <div className="field">
         <label htmlFor={`${idPrefix}-place`}>Place</label>
+        {/*
+          A datalist rather than a bespoke combobox. It gives suggestion,
+          free typing and keyboard support from the platform, and — unlike the
+          tag input — there is no need to parse a list out of one field, so the
+          extra machinery would buy nothing.
+        */}
         <input
           id={`${idPrefix}-place`}
           name="placeLabel"
           defaultValue={placeLabel ?? ""}
           placeholder="A city or a venue"
           maxLength={200}
+          list={`${idPrefix}-places`}
+          autoComplete="off"
         />
+        <datalist id={`${idPrefix}-places`}>
+          {knownPlaces.map((place) => (
+            <option key={place} value={place} />
+          ))}
+        </datalist>
+        <p className="note hint">
+          Anywhere that means something to you — a city, a venue, someone&rsquo;s
+          kitchen, a train. Saved with this note only, never shared on a public page.
+        </p>
       </div>
-      {/*
-        Coarse by default and only as precise as you ask for. A journal that
-        quietly accumulates a movement history is a liability its writer never
-        agreed to, so the exact option is a checkbox you tick, per note.
-
-        **The copy here used to promise machinery that does not exist.** It read
-        "Otherwise only the name above is kept — no coordinates", which invites
-        the reader to conclude that ticking the box produces coordinates. It
-        does not. Nothing in TrackJot geocodes a place, offers autocomplete, or
-        writes `place_lat`/`place_lon` — the columns exist and the service will
-        validate them, but no code path supplies them. All this box records is
-        what the writer meant by the words they typed.
-
-        Saying so in the control itself is the honest version, and it is also
-        the answer to the question the old wording raised.
-      */}
-      <label className="checkbox">
-        <input
-          type="checkbox"
-          name="placePrecision"
-          value="exact"
-          defaultChecked={placePrecision === "exact"}
-        />
-        <span>
-          These words name an exact spot, not just the general area. Either way
-          TrackJot saves only what you typed — it never looks the place up and
-          never stores coordinates.
-        </span>
-      </label>
     </fieldset>
   );
 }

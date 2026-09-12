@@ -55,6 +55,23 @@ const VIEWPORTS = [
   { name: "phone", width: 390, height: 844, touch: true },
 ] as const;
 
+/**
+ * Every touch viewport is also measured rotated.
+ *
+ * Landscape was simply missing: three portrait widths were being called "all
+ * common screen sizes", and a phone turned sideways is neither a phone width
+ * nor a tablet width. 874px lands in a gap where a two-column layout is still
+ * on but barely fits — which is exactly where Samah found two controls
+ * overlapping, and no viewport here would ever have looked.
+ *
+ * Done by rotating inside the test rather than as separate tests, deliberately.
+ * Each test signs up a real account against Clerk's development instance, and
+ * adding two more parallel sign-ups made them fail on the one-time-code step
+ * rather than on anything about layout. Rotation needs no second account, and
+ * the page under test is the same page.
+ */
+const ROTATE = { laptop: false, tablet: true, phone: true } as const;
+
 const target = process.env.E2E_BASE_URL ?? "http://localhost:3100";
 test.skip(
   !(target.includes("localhost") || target.includes("127.0.0.1")),
@@ -417,6 +434,42 @@ async function unshrinkableControlBoxes(page: Page): Promise<string[]> {
 }
 
 /**
+ * A native control whose size the UA decides, in a layout that cannot afford it.
+ *
+ * While `appearance` is `auto`, a control's used width comes from platform
+ * metrics rather than from `width` — and those metrics differ per platform by
+ * a lot. `<input type="date">` is the extreme case: iOS sizes it to a full
+ * localized date plus picker chrome, headless WebKit sizes it to much less. So
+ * a date input inside a narrow column is a control this suite is structurally
+ * unable to measure, and it overflowed on a real iPhone three separate times
+ * while every engine here reported it contained.
+ *
+ * The rule, therefore, is not about pixels at all: a date input in a shared or
+ * constrained column must have its appearance neutralized, so its width is
+ * author-decided and every engine agrees on it. That is checkable anywhere.
+ */
+async function uaSizedDateInputs(page: Page): Promise<string[]> {
+  return page.evaluate(() => {
+    const bad: string[] = [];
+    for (const el of Array.from(
+      document.querySelectorAll<HTMLInputElement>('input[type="date"]'),
+    )) {
+      const style = getComputedStyle(el);
+      const appearance =
+        style.appearance ||
+        (style as unknown as Record<string, string>).webkitAppearance;
+      if (appearance !== "none") {
+        bad.push(
+          `input[type=date]#${el.id || "?"} still has appearance:${appearance} — ` +
+            `its width is decided by platform metrics this suite cannot reproduce`,
+        );
+      }
+    }
+    return [...new Set(bad)];
+  });
+}
+
+/**
  * Native controls must be painted for the theme the page is actually wearing.
  *
  * A `<select>`'s chevron, a date picker, a checkbox tick and a scrollbar are
@@ -581,6 +634,9 @@ for (const viewport of VIEWPORTS) {
         for (const rigid of await unshrinkableControlBoxes(page)) {
           problems.push(`${name} (opened): ${rigid}`);
         }
+        for (const ua of await uaSizedDateInputs(page)) {
+          problems.push(`${name} (opened): ${ua}`);
+        }
         for (const stranded of await strandedText(page)) {
           problems.push(`${name} (opened): ${stranded}`);
         }
@@ -589,6 +645,42 @@ for (const viewport of VIEWPORTS) {
         }
         for (const clipped of await clippedPlaceholders(page)) {
           problems.push(`${name} (opened): ${clipped}`);
+        }
+
+        // Then the same page, same session, turned sideways.
+        if (ROTATE[viewport.name as keyof typeof ROTATE]) {
+          await page.setViewportSize({
+            width: viewport.height,
+            height: viewport.width,
+          });
+          await expect(page.locator("main")).toBeVisible({ timeout: 30_000 });
+
+          const turned = `${name} (landscape)`;
+          const rotated = await sidewaysSpill(page);
+          if (rotated.spill > 0) {
+            problems.push(
+              `${turned}: scrolls sideways by ${rotated.spill}px — widest ${rotated.widest}`,
+            );
+          }
+          for (const overlap of await overlappingControls(page)) {
+            problems.push(`${turned}: ${overlap}`);
+          }
+          for (const over of await overflowsItsContainer(page)) {
+            problems.push(`${turned}: ${over}`);
+          }
+          for (const rigid of await unshrinkableControlBoxes(page)) {
+            problems.push(`${turned}: ${rigid}`);
+          }
+          for (const stranded of await strandedText(page)) {
+            problems.push(`${turned}: ${stranded}`);
+          }
+          for (const clipped of await clippedPlaceholders(page)) {
+            problems.push(`${turned}: ${clipped}`);
+          }
+          await page.setViewportSize({
+            width: viewport.width,
+            height: viewport.height,
+          });
         }
       }
 

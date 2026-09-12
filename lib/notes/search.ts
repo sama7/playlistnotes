@@ -55,7 +55,8 @@ export async function searchNotes(
       ts_rank(
         setweight(to_tsvector('english', n.body), 'A') ||
         setweight(to_tsvector('english', COALESCE(n.display_title,  r.title, c.name, '')), 'B') ||
-        setweight(to_tsvector('english', COALESCE(n.display_artist, r.artist_display, '')), 'B'),
+        setweight(to_tsvector('english', COALESCE(n.display_artist, r.artist_display, '')), 'B') ||
+        setweight(to_tsvector('english', COALESCE(n.place_label, '')), 'C'),
         websearch_to_tsquery('english', ${trimmed})
       ) AS rank
     FROM notes n
@@ -69,7 +70,10 @@ export async function searchNotes(
       AND (
         setweight(to_tsvector('english', n.body), 'A') ||
         setweight(to_tsvector('english', COALESCE(n.display_title,  r.title, c.name, '')), 'B') ||
-        setweight(to_tsvector('english', COALESCE(n.display_artist, r.artist_display, '')), 'B')
+        setweight(to_tsvector('english', COALESCE(n.display_artist, r.artist_display, '')), 'B') ||
+        -- Weight C: a place should be findable, but "Toronto" typed into search
+        -- must not outrank a note whose actual subject is Toronto.
+        setweight(to_tsvector('english', COALESCE(n.place_label, '')), 'C')
       ) @@ websearch_to_tsquery('english', ${trimmed})
     ORDER BY rank DESC, n.updated_at DESC
     LIMIT ${take}

@@ -159,11 +159,19 @@ export async function importListenAction(
       ? { provider: confirmedProvider as Provider, providerId: confirmedId }
       : null;
 
+  /**
+   * Opaque to the server, and deliberately not validated beyond its shape: it
+   * only ever has to be equal to itself. A tampered value can at worst collide
+   * with another of this same user's notes, which is their own data.
+   */
+  const idempotencyKey = String(formData.get("idempotencyKey") ?? "").trim() || null;
+
   try {
     await importListen(user.id, {
       sourceRef,
       body,
       confirmed,
+      idempotencyKey,
       track:
         trackName && artistName
           ? {

@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { requireUser } from "@/lib/auth";
-import { toDateInputValue } from "@/lib/format-date";
+import { DEFAULT_TIME_ZONE, toDateInputValue } from "@/lib/format-date";
 import { DatePrecision, PlacePrecision, Visibility } from "@prisma/client";
 import {
   NoteNotFoundError,
@@ -36,7 +36,10 @@ export async function updateNoteAction(noteId: string, formData: FormData): Prom
   if (!body) return;
 
   try {
-    await updateNote(user.id, noteId, { body, ...readJournalFields(formData) });
+    await updateNote(user.id, noteId, {
+      body,
+      ...readJournalFields(formData, user.timeZone ?? DEFAULT_TIME_ZONE),
+    });
   } catch (error) {
     if (!(error instanceof NoteNotFoundError)) throw error;
   }
@@ -53,7 +56,7 @@ export async function updateNoteAction(noteId: string, formData: FormData): Prom
  * marked "that year" is stored as January 1st — because the precision, not the
  * timestamp, is what the product promises to render.
  */
-function readJournalFields(formData: FormData) {
+function readJournalFields(formData: FormData, zone: string) {
   const rawDate = String(formData.get("experiencedAt") ?? "").trim();
   const rawPrecision = String(formData.get("experiencedPrecision") ?? "day");
   const precision: DatePrecision =
@@ -67,9 +70,23 @@ function readJournalFields(formData: FormData) {
    * writer never chose to give up.
    */
   const originalIso = String(formData.get("experiencedAtOriginal") ?? "").trim();
-  if (originalIso && String(formData.get("experiencedPrecisionOriginal") ?? "") === "time") {
+  /**
+   * Only while the writer is still claiming a *day*.
+   *
+   * This preserved the stored minute whenever the date input's day was
+   * unchanged — which also swallowed a deliberate change of precision. Someone
+   * who opened a scrobbled note, chose "That month", and saved got `time` back
+   * and their choice silently discarded, because they had not also touched the
+   * date. Coarsening a precision is a statement about how much you actually
+   * remember, and it is not the form's to overrule.
+   */
+  if (
+    originalIso &&
+    String(formData.get("experiencedPrecisionOriginal") ?? "") === "time" &&
+    rawPrecision === "day"
+  ) {
     const original = new Date(originalIso);
-    if (!Number.isNaN(original.getTime()) && toDateInputValue(original) === rawDate) {
+    if (!Number.isNaN(original.getTime()) && toDateInputValue(original, zone) === rawDate) {
       return {
         experiencedAt: original,
         experiencedPrecision: DatePrecision.time,
@@ -96,14 +113,25 @@ function readJournalFields(formData: FormData) {
   };
 }
 
-/** `placePrecision` is a checkbox, so its absence means `area`: opting out of
- *  precision has to be what happens when nobody does anything. */
+/**
+ * A place is the words the writer typed, and nothing else.
+ *
+ * The "remember this precisely" checkbox is gone. It set `exact` instead of
+ * `area` on a column that nothing read, beside copy that promised coordinates
+ * no code path has ever captured — so it changed nothing a reader could observe
+ * while implying location capture that does not happen. A control like that is
+ * worse than no control.
+ *
+ * `placePrecision` stays `area` whenever there is a label: the column and its
+ * CHECK constraint still exist, the service still refuses coordinates unless
+ * something explicitly claims `exact`, and a future "use my current location"
+ * would have somewhere honest to say so. Nothing in the UI claims it today.
+ */
 function readPlaceFields(formData: FormData) {
   const placeLabel = String(formData.get("placeLabel") ?? "").trim() || null;
-  const exact = formData.get("placePrecision") === "exact";
   return {
     placeLabel,
-    placePrecision: placeLabel ? (exact ? PlacePrecision.exact : PlacePrecision.area) : null,
+    placePrecision: placeLabel ? PlacePrecision.area : null,
   };
 }
 

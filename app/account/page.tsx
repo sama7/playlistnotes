@@ -1,9 +1,10 @@
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { formatDay } from "@/lib/format-date";
+import { DEFAULT_TIME_ZONE, formatDay } from "@/lib/format-date";
 import { lastfmAuthConfigured, lastfmConfigured } from "@/lib/music/lastfm/client";
 import { LastfmForm } from "./lastfm-form";
 import { UsernameForm } from "./username-form";
+import { TimeZoneForm } from "./time-zone-form";
 
 /**
  * The account page: who you are here, and how to leave with everything.
@@ -34,12 +35,15 @@ export default async function AccountPage({
     <main>
       <h1>Your account</h1>
       <p className="lede">
-        Member since {formatDay(user.createdAt)} · {notes} note{notes === 1 ? "" : "s"} ·{" "}
+        Member since {formatDay(user.createdAt, user.timeZone ?? DEFAULT_TIME_ZONE)} · {notes} note{notes === 1 ? "" : "s"} ·{" "}
         {collections} collection{collections === 1 ? "" : "s"}
       </p>
 
       <h2>Username</h2>
       <UsernameForm current={user.username} />
+
+      <h2>Time zone</h2>
+      <TimeZoneForm current={user.timeZone} />
 
       {/* Feature-flagged on the API key: an unconfigured deployment never
           mentions Last.fm at all. */}

@@ -605,3 +605,83 @@ describe("confirming a provider match", () => {
     expect(await prisma.note.count()).toBe(2);
   });
 });
+
+/**
+ * Saving a jot has to be safe to retry.
+ *
+ * Two writes make one jot — create the note, mark the listen imported — and
+ * they were not atomic. A failure between them left a note written and the
+ * listen still unimported, so the obvious next move (press Save again) wrote a
+ * *second* note about the same play. The transaction closes the window; the
+ * idempotency key closes the rest, because a retry that reaches the server
+ * twice must still resolve to one note.
+ */
+describe("saving a jot under retry", () => {
+  async function linkedUserWithOneListen() {
+    const user = await prisma.user.create({
+      data: {
+        authSubject: `s_${crypto.randomUUID()}`,
+        lastfmUsername: "samah-",
+        lastfmSessionKey: "a-session-key",
+      },
+    });
+    vi.stubGlobal("fetch", lastfmResponse([play()]));
+    await syncRecentListens(user.id);
+    const listen = await prisma.listen.findFirstOrThrow({ where: { ownerId: user.id } });
+    return { user, listen };
+  }
+
+  it("produces one note when the same submission is sent twice", async () => {
+    const { user, listen } = await linkedUserWithOneListen();
+    const key = "jot_retry_0000000000";
+
+    const first = await importListen(user.id, {
+      sourceRef: listen.sourceRef,
+      body: "the city sounds under the intro",
+      idempotencyKey: key,
+    });
+    const second = await importListen(user.id, {
+      sourceRef: listen.sourceRef,
+      body: "the city sounds under the intro",
+      idempotencyKey: key,
+    });
+
+    expect(second.noteId).toBe(first.noteId);
+    expect(await prisma.note.count({ where: { ownerId: user.id } })).toBe(1);
+  });
+
+  /**
+   * The deliberate case, which must survive all of the above: writing a second,
+   * different thought about the same song is something people do on purpose. A
+   * fresh editor mints a fresh key, so it still works.
+   */
+  it("still allows a deliberate second note about the same play", async () => {
+    const { user, listen } = await linkedUserWithOneListen();
+
+    const first = await importListen(user.id, {
+      sourceRef: listen.sourceRef,
+      body: "the city sounds under the intro",
+      idempotencyKey: "jot_first_0000000000",
+    });
+    const second = await importListen(user.id, {
+      sourceRef: listen.sourceRef,
+      body: "second listen, and the bass is doing something else",
+      idempotencyKey: "jot_second_000000000",
+    });
+
+    expect(second.noteId).not.toBe(first.noteId);
+    expect(await prisma.note.count({ where: { ownerId: user.id } })).toBe(2);
+  });
+
+  /**
+   * Without a key there is nothing to deduplicate against, and that has to stay
+   * true — every other note-writing path in the product omits one.
+   */
+  it("writes a note when no key is supplied", async () => {
+    const { user, listen } = await linkedUserWithOneListen();
+
+    await importListen(user.id, { sourceRef: listen.sourceRef, body: "no key here" });
+
+    expect(await prisma.note.count({ where: { ownerId: user.id } })).toBe(1);
+  });
+});
