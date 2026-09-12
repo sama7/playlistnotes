@@ -32,6 +32,20 @@
      row without competing with the text in it. */
   --live-bg: #f1f2fd;
   --live-text: #33409f;
+  /**
+   * The select chevron, drawn by us.
+   *
+   * Native select chrome is sized and painted by the platform, which is the
+   * same trap the date input fell into three times: under mobile WebKit a
+   * `<select>` ignores author padding and min-height outright, so the "How
+   * sure" control sat 25px shorter than the date field beside it and no amount
+   * of CSS moved it. `appearance: none` takes the widget's metrics back — and
+   * costs the chevron, so the chevron is supplied here instead.
+   *
+   * Held in a custom property because a `data:` URI cannot read `var()`: each
+   * theme states its own colour, the same way the rest of the palette does.
+   */
+  --select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5 6 6.5l5-5' fill='none' stroke='%236b6b76' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
 }
 
 @media (prefers-color-scheme: dark) {
@@ -46,6 +60,7 @@
     --warn-line: #7a5f21;
     --live-bg: #1b1d33;
     --live-text: #aab4ff;
+    --select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5 6 6.5l5-5' fill='none' stroke='%239a9aa6' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   }
 }
 
@@ -287,13 +302,39 @@ input[type="date"] {
   min-height: 2.6rem;
 }
 
-/* A control in a shared row fills its column rather than sizing to content, so
-   two columns cannot add up to more than the row. */
-.field-row select,
-.field-row input {
+/**
+ * Two controls on one line are the same control, visually.
+ *
+ * They fill their columns so two columns cannot add up to more than the row —
+ * and they are given the same metrics, because they were not: the date input
+ * inherits the 16px body font with 0.5rem padding while `.sub-fields select`
+ * sets 0.85rem with 0.35rem, so side by side in landscape the select sat
+ * visibly shorter than the field beside it. A pair of controls under a pair of
+ * labels should read as one row, not as two sizes.
+ *
+ * Selectors are deliberately one step more specific than `.sub-fields select`,
+ * which is defined later in this file and would otherwise win on source order.
+ */
+.field-row .field select,
+.field-row .field input {
   width: 100%;
   min-width: 0;
+  /**
+   * An explicit height, not a minimum, and the same one for both.
+   *
+   * A minimum leaves the final height to each control's own intrinsic content,
+   * and a date input's is taller than a select's — so they still disagreed by
+   * 4px, which on one line reads as a mistake. Stating the height makes the
+   * pair a row. Safe because `box-sizing: border-box` is global and both carry
+   * the same padding and font.
+   */
+  height: 2.75rem;
+  font-size: inherit;
+  line-height: 1.2;
 }
+.field-row .field input { padding: 0.5rem 0.6rem; }
+/* Room on the right for the chevron drawn by the rule further down. */
+.field-row .field select { padding: 0.5rem 1.9rem 0.5rem 0.6rem; }
 
 /* Nothing with a UA-decided intrinsic width may exceed its container. */
 input,
@@ -1106,18 +1147,35 @@ form.browse {
 }
 .browse-line { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
 .browse-line input[type="search"] { flex: 1; min-width: 12rem; }
+/**
+ * Every styled select, sized by us rather than by the platform.
+ *
+ * `appearance: none` is the point: a native select's box is the UA's, and
+ * mobile WebKit ignores author padding and `min-height` on one entirely. That
+ * is why the "How sure" dropdown rendered 25px shorter than the date input
+ * beside it in landscape while every desktop engine showed them matching.
+ *
+ * The chevron the platform stops drawing is drawn here, from a per-theme custom
+ * property, with right padding reserved so a long option never runs under it.
+ */
 .browse-line select,
 .visibility select,
 .capture select,
 .sub-fields select {
   font: inherit;
   font-size: 0.85rem;
-  padding: 0.35rem 0.5rem;
+  padding: 0.35rem 1.9rem 0.35rem 0.5rem;
   border: 1px solid var(--line);
   border-radius: 4px;
-  background: var(--bg);
+  background-color: var(--bg);
   color: var(--fg);
   max-width: 100%;
+  -webkit-appearance: none;
+  appearance: none;
+  background-image: var(--select-chevron);
+  background-repeat: no-repeat;
+  background-position: right 0.6rem center;
+  background-size: 0.7rem auto;
 }
 .browse-filters {
   display: grid;

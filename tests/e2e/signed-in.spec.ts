@@ -51,6 +51,30 @@ test.describe("the core loop", () => {
     await expect(page.getByText("CN TOWER").first()).toBeVisible();
   });
 
+  /**
+   * The list shows everything, and says how much "everything" is.
+   *
+   * This is the regression that reached a real phone: `Number("")` is `0`, not
+   * `NaN`, so an absent `limit` parameter passed `Number.isFinite` and clamped
+   * to 1. Every view rendered a single note under a heading reading
+   * "1+ notes", with "Show 50 more notes" beneath it, on an archive of six.
+   *
+   * The parsing is unit-tested; this checks the thing a person actually sees —
+   * an exact count, every note present, and no offer to show more than exists.
+   */
+  test("shows every note, counts them exactly, and offers no page that isn't there", async ({
+    page,
+  }) => {
+    await signUp(page, testEmail("paging"));
+    await writeNote(page, { ...CN_TOWER, body: "first of two" });
+    await writeNote(page, { ...DARLING_I, body: "second of two" });
+
+    await page.goto("/notes");
+    await expect(page.getByRole("heading", { name: "2 notes", exact: true })).toBeVisible();
+    await expect(page.locator(".note-card")).toHaveCount(2);
+    await expect(page.getByRole("link", { name: /show \d+ more/i })).toHaveCount(0);
+  });
+
   test("a new note is private by default", async ({ page }) => {
     await signUp(page, testEmail("private"));
     await writeNote(page, { ...DARLING_I, body: "private by default, always" });

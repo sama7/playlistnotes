@@ -128,21 +128,42 @@ export interface BrowseOptions extends BrowseFilters {
   limit?: number;
 }
 
+/** A screenful and a bit, for both browsing and searching. */
+export const PAGE_SIZE = 50;
+
+/**
+ * How many notes a view should show, from an untrusted query string.
+ *
+ * **`Number("")` is `0`, not `NaN`**, and that one fact shipped a bug: the page
+ * read `Number(params.limit ?? "")` and then asked `Number.isFinite`, which is
+ * perfectly true of zero, so an absent parameter clamped to 1. Every view
+ * showed a single note under a heading reading "1+ notes" with "Show 50 more"
+ * beneath it, on an archive of six.
+ *
+ * Presence is therefore tested before value, and anything that is not a usable
+ * number falls back to the page size rather than to whatever `Number` made of
+ * it. Clamped at the top because this comes from a URL.
+ */
+export function resolveLimit(raw: string | undefined): number {
+  if (!raw) return PAGE_SIZE;
+  const value = Number(raw);
+  if (!Number.isFinite(value) || value < 1) return PAGE_SIZE;
+  return Math.min(Math.trunc(value), 500);
+}
+
 /** True when any filter beyond the default listing is in play. */
 export function hasFilters(filters: BrowseFilters): boolean {
   return Object.values(filters).some((v) => v !== undefined && v !== "");
 }
 
-export async function browseNotes(
-  ownerId: string,
-  options: BrowseOptions = {},
-): Promise<NoteWithSubject[]> {
-  const {
-    sort = "recent",
-    direction = defaultDirectionFor(sort),
-    limit = 100,
-  } = options;
-
+/**
+ * The WHERE clause, built once and shared by the listing and its count.
+ *
+ * Two queries that filter "the same way" by having the same code typed twice
+ * drift, and the first symptom is a heading that disagrees with the list under
+ * it. Owner scope is composed in here, so no caller can forget it.
+ */
+function whereFor(ownerId: string, options: BrowseFilters): Prisma.NoteWhereInput {
   const contains = (value: string | undefined) =>
     value?.trim() ? { contains: value.trim(), mode: Prisma.QueryMode.insensitive } : undefined;
 
@@ -178,10 +199,32 @@ export async function browseNotes(
     };
   }
 
+  return where;
+}
+
+export async function browseNotes(
+  ownerId: string,
+  options: BrowseOptions = {},
+): Promise<NoteWithSubject[]> {
+  const { sort = "recent", direction = defaultDirectionFor(sort), limit = 100 } = options;
+
   return prisma.note.findMany({
-    where,
+    where: whereFor(ownerId, options),
     orderBy: orderFor(sort, direction),
     include: NOTE_LIST_INCLUDE,
-    take: Math.min(Math.max(limit, 1), 200),
+    take: Math.min(Math.max(limit, 1), 500),
   });
+}
+
+/**
+ * How many notes match, exactly.
+ *
+ * The heading used to be inferred from the page: fetch one more row than asked
+ * for, and say "50+" when it came back. That was cheap and it read badly — and
+ * when a paging bug made the page size 1, it read as "1+ notes" above a single
+ * note with "Show 50 more" underneath, on an archive of six. An indexed COUNT
+ * over one person's notes is not worth being vague to avoid.
+ */
+export async function countNotes(ownerId: string, filters: BrowseFilters = {}): Promise<number> {
+  return prisma.note.count({ where: whereFor(ownerId, filters) });
 }

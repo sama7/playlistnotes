@@ -371,6 +371,45 @@ test.describe("the track playing right now", () => {
   });
 
   /**
+   * A date field and the select beside it are one row, so they are one height.
+   *
+   * They were not: a native `<select>` is sized by the platform, and mobile
+   * WebKit ignores author padding and `min-height` on one entirely — so the
+   * "How sure" control rendered 25px shorter than the date field next to it in
+   * landscape, while every desktop engine showed them matching. Fixed the same
+   * way the date input was, by taking the widget's metrics away with
+   * `appearance: none` and drawing the chevron ourselves.
+   *
+   * Measured in landscape, where they actually share a line.
+   */
+  test("the date field and the precision select are the same height", async ({
+    page,
+  }) => {
+    await overflowOf(page, NOTE_EDITOR, { width: 874, height: 402 });
+
+    const heights = await page.evaluate(() => {
+      const h = (sel: string) => {
+        const el = document.querySelector(sel);
+        return el ? Math.round(el.getBoundingClientRect().height) : null;
+      };
+      return { date: h("#d"), precision: h("#p") };
+    });
+
+    expect(
+      heights.date,
+      "the date input should be in the harness",
+    ).not.toBeNull();
+    expect(
+      heights.precision,
+      "the precision select should be in the harness",
+    ).not.toBeNull();
+    expect(
+      Math.abs(heights.date! - heights.precision!),
+      `date is ${heights.date}px and the select beside it is ${heights.precision}px`,
+    ).toBeLessThanOrEqual(1);
+  });
+
+  /**
    * Native control chrome has to be painted for the theme the page is wearing.
    *
    * A select's chevron, a date picker and a checkbox tick are drawn by the UA
