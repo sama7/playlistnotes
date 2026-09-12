@@ -112,6 +112,9 @@ done
 curl -sf -o /dev/null "${LASTFM_BASE}/api/health" || { echo "second instance never became healthy"; tail -20 /tmp/tj-verify-lastfm.log; exit 1; }
 
 echo "==> Browser suite (Last.fm connected, against the fixture)"
-E2E_BASE_URL="$LASTFM_BASE" E2E_LASTFM_FIXTURE=1 npx playwright test tests/e2e/lastfm-connected.spec.ts
+PLAYWRIGHT_JSON_OUTPUT_NAME=/tmp/tj-lastfm-results.json \
+E2E_BASE_URL="$LASTFM_BASE" E2E_LASTFM_FIXTURE=1 \
+  npx playwright test tests/e2e/lastfm-connected.spec.ts --reporter=line,json
+node scripts/assert-suite-ran.mjs /tmp/tj-lastfm-results.json 5
 
 echo "==> CI-shaped verification passed, both configured and not"

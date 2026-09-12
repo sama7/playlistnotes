@@ -400,12 +400,18 @@ jobs:
           curl -sf "http://127.0.0.1:4599/?method=user.getinfo&user=x" >/dev/null \
             || { echo "fixture unreachable from the runner"; cat /tmp/lastfm-fixture.log; exit 1; }
 
+      # A suite that skips itself exits 0, and green would then mean nothing —
+      # which is the precise failure this fixture exists to end. The counts are
+      # asserted rather than assumed: every test must actually have run.
       - name: Run the connected Last.fm suite
         env:
           PLAYWRIGHT_HTML_OPEN: never
+          PLAYWRIGHT_JSON_OUTPUT_NAME: /tmp/lastfm-results.json
           E2E_BASE_URL: http://localhost:3002
           E2E_LASTFM_FIXTURE: "1"
-        run: npx playwright test tests/e2e/lastfm-connected.spec.ts --reporter=github,line
+        run: |
+          npx playwright test tests/e2e/lastfm-connected.spec.ts --reporter=github,line,json
+          node scripts/assert-suite-ran.mjs /tmp/lastfm-results.json 5
 
       # Job logs need admin rights to download, so anything worth reading after
       # a failure has to be printed into the step's own output — where the
