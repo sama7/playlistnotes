@@ -685,3 +685,66 @@ describe("saving a jot under retry", () => {
     expect(await prisma.note.count({ where: { ownerId: user.id } })).toBe(1);
   });
 });
+
+/**
+ * Earlier listening, one page at a time.
+ *
+ * Ten rows is a capture aid for what is playing now. A day of listening is more
+ * than ten rows, so somebody who sits down in the evening would find the
+ * morning already pushed off the strip — with no way back to it. This is the
+ * bounded answer: a requested page, not a lifetime import, which the contract
+ * keeps out of scope and which should stay out.
+ */
+describe("reaching earlier listens", () => {
+  it("asks Last.fm for the page it was given", async () => {
+    const user = await prisma.user.create({
+      data: { authSubject: `s_${crypto.randomUUID()}`, lastfmUsername: "samah-" },
+    });
+
+    const asked: string[] = [];
+    vi.stubGlobal("fetch", (async (url: URL | string) => {
+      const href = url.toString();
+      asked.push(new URL(href).searchParams.get("page") ?? "(none)");
+      return new Response(JSON.stringify({ recenttracks: { track: [] } }));
+    }) as unknown as typeof fetch);
+
+    await syncRecentListens(user.id, 10, 3);
+
+    expect(asked).toContain("3");
+  });
+
+  /**
+   * A page number arrives from a browser, so it is clamped rather than trusted.
+   * Asking somebody else's API for page 9,000,000 because a client said so is
+   * how an integration becomes a liability to the service it depends on.
+   */
+  it("clamps a page out of range instead of passing it on", async () => {
+    const user = await prisma.user.create({
+      data: { authSubject: `s_${crypto.randomUUID()}`, lastfmUsername: "samah-" },
+    });
+
+    const asked: string[] = [];
+    vi.stubGlobal("fetch", (async (url: URL | string) => {
+      asked.push(new URL(url.toString()).searchParams.get("page") ?? "(none)");
+      return new Response(JSON.stringify({ recenttracks: { track: [] } }));
+    }) as unknown as typeof fetch);
+
+    await syncRecentListens(user.id, 10, 9_000_000);
+    await syncRecentListens(user.id, 10, -4);
+
+    expect(asked).toEqual(["20", "1"]);
+  });
+
+  /** An earlier page is persisted like any other, so it can be jotted. */
+  it("stores what an earlier page returns", async () => {
+    const user = await prisma.user.create({
+      data: { authSubject: `s_${crypto.randomUUID()}`, lastfmUsername: "samah-" },
+    });
+    vi.stubGlobal("fetch", lastfmResponse([play()]));
+
+    const listens = await syncRecentListens(user.id, 10, 2);
+
+    expect(listens).toHaveLength(1);
+    expect(await prisma.listen.count({ where: { ownerId: user.id } })).toBe(1);
+  });
+});

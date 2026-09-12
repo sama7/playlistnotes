@@ -27,9 +27,31 @@
 
 import { createHash } from "node:crypto";
 
-const API = "https://ws.audioscrobbler.com/2.0/";
+/**
+ * Last.fm's endpoints, overridable **only for testing**.
+ *
+ * ## Why this seam exists
+ *
+ * Green CI did not demonstrate the connected Last.fm experience at all. The
+ * browser tests for it are gated on the integration being configured, and CI
+ * holds no Last.fm credentials — so every one of them skipped, and the feature
+ * a person actually uses was verified by hand or not at all. Handing CI a real
+ * API key would not fix that either: it would make the suite depend on a third
+ * party's availability, on one real account's listening history, and on rows
+ * that change between runs. A test that says something different every morning
+ * is not a test.
+ *
+ * So the endpoints are read from the environment, and CI points them at a
+ * fixture server that answers with fixed JSON. **No credential is needed and
+ * none should ever be added** — the values CI uses are deliberate nonsense.
+ *
+ * Unset in every real deployment, which is what keeps this a test seam rather
+ * than a way to point the product at somebody else's server. `check-env.mjs`
+ * refuses a production environment that sets them.
+ */
+const API = process.env.LASTFM_API_BASE ?? "https://ws.audioscrobbler.com/2.0/";
 /** Where a user is sent to approve access. Their host, over HTTPS. */
-const AUTH_PAGE = "https://www.last.fm/api/auth/";
+const AUTH_PAGE = process.env.LASTFM_AUTH_PAGE ?? "https://www.last.fm/api/auth/";
 const TIMEOUT_MS = 8000;
 /** A listening feed is text; anything this large is not one. */
 const MAX_BYTES = 512 * 1024;
@@ -301,6 +323,16 @@ export async function fetchRecentTracks(
   limit = 10,
   fetchImpl: typeof fetch = fetch,
   sessionKey?: string | null,
+  /**
+   * Which page of history, 1 being the most recent.
+   *
+   * Clamped like `limit`, and for the same reason. This exists so someone
+   * returning in the evening can still reach the morning's listening: ten rows
+   * is a capture aid for what you are hearing now, and a day of listening is
+   * more than ten rows. It is **not** a lifetime importer — a bounded window
+   * the reader asked for, fetched one page at a time.
+   */
+  page = 1,
 ): Promise<RecentTrack[]> {
   /**
    * With a session key the request is signed and made *as* the connected
@@ -313,6 +345,7 @@ export async function fetchRecentTracks(
       method: "user.getrecenttracks",
       user: username,
       limit: String(Math.min(Math.max(limit, 1), 50)),
+      page: String(Math.min(Math.max(Math.trunc(page) || 1, 1), 20)),
       ...(sessionKey ? { sk: sessionKey } : {}),
     },
     fetchImpl,

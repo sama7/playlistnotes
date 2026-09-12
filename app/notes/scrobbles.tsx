@@ -53,6 +53,26 @@ const POLL_MS = 30_000;
 export function Scrobbles({ username }: { username: string }) {
   const [state, setState] = useState<RecentState | null>(null);
   const [writingFor, setWritingFor] = useState<string | null>(null);
+  /**
+   * Earlier pages, once someone has asked for them.
+   *
+   * Ten rows is a capture aid for what is playing now; a day of listening is
+   * more than ten rows, so somebody sitting down in the evening could find the
+   * morning already pushed off the strip. This is the bounded answer to that —
+   * one requested page at a time, never a lifetime import.
+   *
+   * Held separately from `state` on purpose: **polling refreshes only the first
+   * page.** Earlier listening does not change, so re-fetching it every thirty
+   * seconds would spend somebody else's rate limit to redraw identical rows,
+   * and a refresh that collapsed the pages a reader had opened would be its own
+   * small betrayal.
+   */
+  const [earlier, setEarlier] = useState<ListenView[]>([]);
+  const [page, setPage] = useState(1);
+  const [loadingEarlier, setLoadingEarlier] = useState(false);
+  const [earlierError, setEarlierError] = useState<string | null>(null);
+  /** Last.fm answered a page with nothing, so there is no more history. */
+  const [exhausted, setExhausted] = useState(false);
 
   /**
    * Read by the polling loop, which must see the *current* value without being
@@ -118,6 +138,41 @@ export function Scrobbles({ username }: { username: string }) {
     };
   }, [load, apply]);
 
+  /**
+   * Fetch the next page of earlier listening and append it.
+   *
+   * Appended rather than merged into `state` so the polling loop keeps owning
+   * the first page alone. An empty reply means the history ran out, which is a
+   * fact worth showing rather than a button that keeps promising more.
+   */
+  const showEarlier = useCallback(async () => {
+    if (loadingEarlier) return;
+    setLoadingEarlier(true);
+    setEarlierError(null);
+    const next = page + 1;
+    try {
+      const result = await recentListensAction(next);
+      if (!result.ok) {
+        setEarlierError(result.message);
+        return;
+      }
+      // A now-playing row only belongs at the top of the first page; it would
+      // be nonsense repeated further down a history.
+      const older = result.listens.filter((listen) => listen.playedAt !== null);
+      if (older.length === 0) {
+        setExhausted(true);
+        return;
+      }
+      setEarlier((current) => [...current, ...older]);
+      setPage(next);
+      if (next >= 20) setExhausted(true);
+    } catch {
+      setEarlierError("Last.fm isn’t answering right now.");
+    } finally {
+      setLoadingEarlier(false);
+    }
+  }, [loadingEarlier, page]);
+
   /** Finishing a jot resumes the feed and shows the result immediately. */
   const doneWriting = useCallback(() => {
     beginWriting(null);
@@ -151,7 +206,7 @@ export function Scrobbles({ username }: { username: string }) {
 
       {state?.ok && state.listens.length > 0 && (
         <ul className="scrobble-list">
-          {state.listens.map((listen) => (
+          {visibleListens(state.listens, earlier).map((listen) => (
             <li
               key={listen.sourceRef}
               className={`scrobble${listen.playedAt ? "" : " live"}`}
@@ -207,6 +262,34 @@ export function Scrobbles({ username }: { username: string }) {
             </li>
           ))}
         </ul>
+      )}
+
+      {/*
+        Earlier listening, only when asked for.
+        
+        A bounded window rather than a history import: each press fetches one
+        more page, and the button stops offering when Last.fm runs out or the
+        cap is reached. It is deliberately absent while a jot is open — the
+        whole strip freezes then, and appending rows underneath somebody
+        mid-sentence would be the same disruption polling is suppressed to
+        avoid.
+      */}
+      {state?.ok && state.listens.length > 0 && writingFor === null && (
+        <div className="row scrobbles-more">
+          {!exhausted && (
+            <button type="button" className="linkish" onClick={showEarlier} disabled={loadingEarlier}>
+              {loadingEarlier ? "Looking further back…" : "Show earlier listens"}
+            </button>
+          )}
+          {exhausted && (
+            <span className="note">That&rsquo;s as far back as this goes.</span>
+          )}
+          {earlierError && (
+            <span role="alert" className="note">
+              {earlierError}
+            </span>
+          )}
+        </div>
       )}
 
       <p className="note">
@@ -452,4 +535,23 @@ export function LastfmPrompt() {
       </div>
     </section>
   );
+}
+
+/**
+ * The first page plus whatever earlier pages have been asked for, deduplicated.
+ *
+ * Overlap is expected rather than exceptional: the first page is re-polled
+ * every thirty seconds while the earlier pages are frozen, so a play can sit in
+ * both — and Last.fm itself shifts rows between pages as new plays arrive. Keyed
+ * by `sourceRef`, first occurrence wins, which is the freshly polled one.
+ */
+function visibleListens(recent: ListenView[], earlier: ListenView[]): ListenView[] {
+  const seen = new Set<string>();
+  const out: ListenView[] = [];
+  for (const listen of [...recent, ...earlier]) {
+    if (seen.has(listen.sourceRef)) continue;
+    seen.add(listen.sourceRef);
+    out.push(listen);
+  }
+  return out;
 }

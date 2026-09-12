@@ -1607,6 +1607,44 @@ It is a stated intent about the words typed, not a switch that turns on
 location capture. **Open question for a product decision:** keep it as an
 intent marker, drop it, or make it real with a geocoder.
 
+## Earlier listens, and proving the connected feature at all
+
+**Earlier listens.** The strip asked Last.fm for the ten most recent plays, full
+stop — a capture aid for what is playing now, and nothing for somebody sitting
+down in the evening whose morning had already scrolled off. "Show earlier
+listens" now fetches one more page per press, up to twenty, clamped on both the
+client and the server because a page number arrives from a browser. It is
+deliberately **not** a history importer, which the contract keeps out of scope.
+
+Earlier pages are held apart from the first and **are not polled**: earlier
+listening does not change, so re-fetching it every thirty seconds would spend
+somebody else's rate limit redrawing identical rows, and a refresh that
+collapsed the pages a reader had opened would be its own small betrayal. The
+control disappears while a jot is open, for the same reason polling stops there.
+
+**Green CI did not demonstrate the connected experience.** Every browser test
+for Last.fm was gated on the integration being configured, CI holds no
+credentials, so all of them skipped — silently, on every green build. The half a
+person actually uses was verified by hand or not at all.
+
+A real API key would not have fixed it: the suite would then depend on a third
+party's uptime, on one account's listening, and on rows that change between
+runs, so a red build would mean "Last.fm changed" as often as "we broke
+something". `scripts/lastfm-fixture-server.mjs` answers in Last.fm's own shapes
+with fixed data — a now-playing track with no timestamp, a completed play, the
+same track twice, one with a MusicBrainz id and one without — and the client
+reaches it through `LASTFM_API_BASE` / `LASTFM_AUTH_PAGE`.
+
+**No credential is required and none should be added.** The key and secret CI
+uses are deliberate nonsense. `check-env.mjs` refuses any deployment that sets
+the endpoint overrides, because on a real host they would send a user's approval
+and session key to somebody else's server.
+
+The connected suite walks the real approval round trip — state cookie, callback
+guard, session exchange — then covers capture, a failed save keeping the
+writing, a retry producing one note rather than two, repeated plays staying
+separate, earlier listens, and re-dating an imported jot.
+
 ## Verifying in CI's shape, not this machine's
 
 Three CI failures in a row came from the same shape of mistake — the local

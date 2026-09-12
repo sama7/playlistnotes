@@ -124,6 +124,17 @@ function playKey(artistName: string, trackName: string): string {
 export async function syncRecentListens(
   userId: string,
   limit = 10,
+  /**
+   * Which page of history. 1 is what the strip shows and polls; anything
+   * higher is the reader explicitly asking for earlier listening.
+   *
+   * Deliberately a page rather than a full import. The contract keeps whole
+   * history out of scope, and it should stay out — but "the last ten plays" is
+   * a capture aid, not a day, and someone who sits down in the evening should
+   * not find the morning gone. One requested page at a time is the smallest
+   * thing that fixes that.
+   */
+  page = 1,
 ): Promise<ListenView[]> {
   const user = await prisma.user.findUniqueOrThrow({
     where: { id: userId },
@@ -148,6 +159,7 @@ export async function syncRecentListens(
     // read outright, where degrading to a public one still works for every
     // profile that hides nothing.
     lastfmAuthConfigured() ? user.lastfmSessionKey : null,
+    page,
   );
 
   for (const track of tracks) {

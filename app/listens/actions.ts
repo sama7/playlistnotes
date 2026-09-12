@@ -48,11 +48,19 @@ export type RecentState =
  * page must never wait on Last.fm to paint. If this is slow or fails, the
  * strip says so and everything else on the page is already there.
  */
-export async function recentListensAction(): Promise<RecentState> {
+export async function recentListensAction(page = 1): Promise<RecentState> {
   const user = await requireUser();
 
+  /**
+   * Clamped here as well as in the client, because this is a server action and
+   * its argument comes from a browser. Twenty pages of ten is two hundred
+   * plays, which is a generous "earlier today" and nowhere near a history
+   * import — the thing the contract keeps out of scope.
+   */
+  const requested = Math.min(Math.max(Math.trunc(page) || 1, 1), 20);
+
   try {
-    return { ok: true, listens: await syncRecentListens(user.id, 10) };
+    return { ok: true, listens: await syncRecentListens(user.id, 10, requested) };
   } catch (error) {
     if (error instanceof LastfmNotLinkedError) {
       return { ok: false, message: "No Last.fm account is connected." };
@@ -75,7 +83,7 @@ export async function recentListensAction(): Promise<RecentState> {
          */
         await invalidateLastfmSession(user.id);
         try {
-          return { ok: true, listens: await syncRecentListens(user.id, 10) };
+          return { ok: true, listens: await syncRecentListens(user.id, 10, requested) };
         } catch {
           return {
             ok: false,

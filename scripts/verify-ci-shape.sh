@@ -63,7 +63,48 @@ curl -sf -o /dev/null "${BASE}/api/health" || { echo "server never became health
 echo "==> Smoke"
 node scripts/smoke.js "$BASE"
 
-echo "==> Browser suite"
+echo "==> Browser suite (Last.fm unconfigured, as CI's e2e job runs it)"
 E2E_BASE_URL="$BASE" npx playwright test
 
-echo "==> CI-shaped verification passed"
+# ---------------------------------------------------------------------------
+# Second pass: the same artifact, pointed at a Last.fm fixture.
+#
+# The first pass proves the product behaves with the integration absent. It
+# cannot say anything about the integration being present, which is the half a
+# person actually uses — and which green CI never demonstrated, because the
+# tests for it skip without credentials. A fixture answers that without one.
+# ---------------------------------------------------------------------------
+FIXTURE_PORT="${FIXTURE_PORT:-4599}"
+echo "==> Starting the Last.fm fixture on ${FIXTURE_PORT}"
+node scripts/lastfm-fixture-server.mjs "$FIXTURE_PORT" >/tmp/tj-lastfm-fixture.log 2>&1 &
+FIXTURE=$!
+trap 'kill "$SERVER" "$FIXTURE" 2>/dev/null || true; rm -rf artifact' EXIT
+
+for _ in $(seq 1 20); do
+  curl -sf -o /dev/null "http://127.0.0.1:${FIXTURE_PORT}/?method=user.getinfo&user=x" && break
+  sleep 0.5
+done
+
+kill "$SERVER" 2>/dev/null || true
+sleep 1
+
+echo "==> Re-serving with the integration configured against the fixture"
+# Deliberate nonsense. The fixture accepts anything, and a real value must
+# never be needed here.
+export LASTFM_API_KEY="ffffffffffffffffffffffffffffffff"
+export LASTFM_SHARED_SECRET="ffffffffffffffffffffffffffffffff"
+export LASTFM_API_BASE="http://127.0.0.1:${FIXTURE_PORT}/"
+export LASTFM_AUTH_PAGE="http://127.0.0.1:${FIXTURE_PORT}/api/auth/"
+
+PORT="$PORT" node artifact/scripts/start-standalone.cjs >/tmp/tj-verify-lastfm.log 2>&1 &
+SERVER=$!
+for _ in $(seq 1 45); do
+  curl -sf -o /dev/null "${BASE}/api/health" && break
+  sleep 1
+done
+curl -sf -o /dev/null "${BASE}/api/health" || { echo "server never became healthy"; tail -20 /tmp/tj-verify-lastfm.log; exit 1; }
+
+echo "==> Browser suite (Last.fm connected, against the fixture)"
+E2E_BASE_URL="$BASE" E2E_LASTFM_FIXTURE=1 npx playwright test tests/e2e/lastfm-connected.spec.ts
+
+echo "==> CI-shaped verification passed, both configured and not"

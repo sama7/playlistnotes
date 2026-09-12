@@ -210,6 +210,24 @@ if (existsSync(bundle) && env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY) {
   }
 }
 
+/**
+ * The endpoint overrides must never reach a deployment.
+ *
+ * They exist so CI can point the Last.fm client at a fixture server without a
+ * credential. Set on a real host they would send a user's approval — and the
+ * session key that comes back — to somebody else's server. Checked in the
+ * environment file *and* the process, because either would take effect.
+ */
+for (const name of ["LASTFM_API_BASE", "LASTFM_AUTH_PAGE"]) {
+  if (env[name] || process.env[name]) {
+    failed += 1;
+    console.log(
+      `\n  FAIL     ${name.padEnd(34)} set — this override exists only for the test fixture ` +
+        `and must never be set in a deployment`,
+    );
+  }
+}
+
 console.log(
   `\n${failed === 0 ? "All configured variables are well-formed" : `${failed} problem(s)`}` +
     `${skipped ? `, ${skipped} optional not configured` : ""}.`,

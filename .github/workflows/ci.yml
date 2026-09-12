@@ -341,6 +341,51 @@ jobs:
           PLAYWRIGHT_HTML_OPEN: never
         run: E2E_BASE_URL=http://localhost:3001 npx playwright test --reporter=github,line,html
 
+      # ---------------------------------------------------------------------
+      # The connected Last.fm experience, against a fixture.
+      #
+      # Everything above runs with no Last.fm credentials, which is the right
+      # way to prove the product behaves when the integration is absent — and
+      # it meant the half a person actually uses was never demonstrated here at
+      # all: every test for it skipped, silently, on every green build.
+      #
+      # A real API key would not fix that. The suite would then depend on a
+      # third party's uptime, on one real account's listening, and on rows that
+      # change between runs, so a red build would mean "Last.fm changed" as
+      # often as "we broke something". **No credential is needed for this and
+      # none should be added** — the values below are deliberate nonsense, and
+      # the endpoints point at a fixture server in this repository.
+      # ---------------------------------------------------------------------
+      - name: Start the Last.fm fixture
+        run: |
+          node scripts/lastfm-fixture-server.mjs 4599 &
+          for _ in $(seq 1 20); do
+            curl -sf -o /dev/null "http://127.0.0.1:4599/?method=user.getinfo&user=x" && break
+            sleep 1
+          done
+
+      - name: Restart the app pointed at the fixture
+        env:
+          LASTFM_API_KEY: ffffffffffffffffffffffffffffffff
+          LASTFM_SHARED_SECRET: ffffffffffffffffffffffffffffffff
+          LASTFM_API_BASE: http://127.0.0.1:4599/
+          LASTFM_AUTH_PAGE: http://127.0.0.1:4599/api/auth/
+        run: |
+          pkill -f start-standalone.cjs || true
+          sleep 2
+          node artifact/scripts/start-standalone.cjs &
+          for _ in $(seq 1 30); do
+            curl -sf -o /dev/null http://localhost:3001/api/health && break
+            sleep 2
+          done
+
+      - name: Run the connected Last.fm suite
+        env:
+          PLAYWRIGHT_HTML_OPEN: never
+          E2E_BASE_URL: http://localhost:3001
+          E2E_LASTFM_FIXTURE: "1"
+        run: npx playwright test tests/e2e/lastfm-connected.spec.ts --reporter=github,line
+
       # Every run signs up fresh accounts; without this they accumulate in the
       # development instance forever. Runs even when the suite fails, because a
       # failed run creates users too. Refuses a production key outright.
