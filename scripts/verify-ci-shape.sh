@@ -85,26 +85,33 @@ for _ in $(seq 1 20); do
   sleep 0.5
 done
 
-kill "$SERVER" 2>/dev/null || true
-sleep 1
+echo "==> Starting a second instance pointed at the fixture"
+# A second server on its own port rather than restarting the first: killing and
+# rebinding is a race, and in CI it lost — the replacement failed to bind and
+# the health check passed against the old, unconfigured process.
+LASTFM_PORT="${LASTFM_PORT:-3002}"
+LASTFM_BASE="http://localhost:${LASTFM_PORT}"
+if lsof -ti:"$LASTFM_PORT" >/dev/null 2>&1; then kill "$(lsof -ti:"$LASTFM_PORT")"; sleep 1; fi
 
-echo "==> Re-serving with the integration configured against the fixture"
 # Deliberate nonsense. The fixture accepts anything, and a real value must
 # never be needed here.
-export LASTFM_API_KEY="ffffffffffffffffffffffffffffffff"
-export LASTFM_SHARED_SECRET="ffffffffffffffffffffffffffffffff"
-export LASTFM_API_BASE="http://127.0.0.1:${FIXTURE_PORT}/"
-export LASTFM_AUTH_PAGE="http://127.0.0.1:${FIXTURE_PORT}/api/auth/"
+PORT="$LASTFM_PORT" \
+APP_BASE_URL="$LASTFM_BASE" \
+LASTFM_API_KEY="ffffffffffffffffffffffffffffffff" \
+LASTFM_SHARED_SECRET="ffffffffffffffffffffffffffffffff" \
+LASTFM_API_BASE="http://127.0.0.1:${FIXTURE_PORT}/" \
+LASTFM_AUTH_PAGE="http://127.0.0.1:${FIXTURE_PORT}/api/auth/" \
+  node artifact/scripts/start-standalone.cjs >/tmp/tj-verify-lastfm.log 2>&1 &
+LASTFM_SERVER=$!
+trap 'kill "$SERVER" "$FIXTURE" "$LASTFM_SERVER" 2>/dev/null || true; rm -rf artifact' EXIT
 
-PORT="$PORT" node artifact/scripts/start-standalone.cjs >/tmp/tj-verify-lastfm.log 2>&1 &
-SERVER=$!
 for _ in $(seq 1 45); do
-  curl -sf -o /dev/null "${BASE}/api/health" && break
+  curl -sf -o /dev/null "${LASTFM_BASE}/api/health" && break
   sleep 1
 done
-curl -sf -o /dev/null "${BASE}/api/health" || { echo "server never became healthy"; tail -20 /tmp/tj-verify-lastfm.log; exit 1; }
+curl -sf -o /dev/null "${LASTFM_BASE}/api/health" || { echo "second instance never became healthy"; tail -20 /tmp/tj-verify-lastfm.log; exit 1; }
 
 echo "==> Browser suite (Last.fm connected, against the fixture)"
-E2E_BASE_URL="$BASE" E2E_LASTFM_FIXTURE=1 npx playwright test tests/e2e/lastfm-connected.spec.ts
+E2E_BASE_URL="$LASTFM_BASE" E2E_LASTFM_FIXTURE=1 npx playwright test tests/e2e/lastfm-connected.spec.ts
 
 echo "==> CI-shaped verification passed, both configured and not"
