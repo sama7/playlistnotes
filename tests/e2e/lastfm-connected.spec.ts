@@ -55,7 +55,24 @@ test.beforeAll(async ({ browser }) => {
   // access" causes — so the state cookie, the callback guard and the session
   // exchange are all genuinely exercised.
   await page.goto("/api/lastfm/start");
-  await expect(page).toHaveURL(/\/(account|notes)/, { timeout: 30_000 });
+
+  /**
+   * Assert the *outcome*, not merely that we landed somewhere.
+   *
+   * The callback always redirects to `/account?lastfm=…`, success or failure —
+   * `connected`, or `state` for a rejected CSRF check, `denied` for a missing
+   * token, `failed` when the session exchange itself fell over. The first
+   * version of this waited for `/(account|notes)/`, which every one of those
+   * satisfies, so a connection that never happened surfaced two tests later as
+   * "no rows in the strip" and said nothing about which of four things broke.
+   */
+  await expect(page).toHaveURL(/\/account\?lastfm=/, { timeout: 30_000 });
+  const outcome = new URL(page.url()).searchParams.get("lastfm");
+  expect(
+    outcome,
+    `the Last.fm approval round trip ended in "${outcome}" rather than "connected" — ` +
+      `"state" is the CSRF cookie, "denied" is a missing token, "failed" is the session exchange`,
+  ).toBe("connected");
 });
 
 test.afterAll(async () => {

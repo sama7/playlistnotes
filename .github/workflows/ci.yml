@@ -317,11 +317,16 @@ jobs:
 
       - name: Start it
         run: |
-          node artifact/scripts/start-standalone.cjs &
+          node artifact/scripts/start-standalone.cjs >/tmp/app-lastfm.log 2>&1 &
           for _ in $(seq 1 30); do
             curl -sf -o /dev/null http://localhost:3001/api/health && break
             sleep 2
           done
+          # Prove the app can actually reach the fixture before the browser
+          # tries to. A failure here is unambiguous; a failure later looks like
+          # "the strip is empty" and could be any of four things.
+          curl -sf "http://127.0.0.1:4599/?method=user.getinfo&user=x" >/dev/null \
+            || { echo "fixture unreachable from the runner"; cat /tmp/lastfm-fixture.log; exit 1; }
 
       # Three reporters, and each one earns its place.
       #
@@ -358,7 +363,7 @@ jobs:
       # ---------------------------------------------------------------------
       - name: Start the Last.fm fixture
         run: |
-          node scripts/lastfm-fixture-server.mjs 4599 &
+          node scripts/lastfm-fixture-server.mjs 4599 >/tmp/lastfm-fixture.log 2>&1 &
           for _ in $(seq 1 20); do
             curl -sf -o /dev/null "http://127.0.0.1:4599/?method=user.getinfo&user=x" && break
             sleep 1
@@ -373,11 +378,16 @@ jobs:
         run: |
           pkill -f start-standalone.cjs || true
           sleep 2
-          node artifact/scripts/start-standalone.cjs &
+          node artifact/scripts/start-standalone.cjs >/tmp/app-lastfm.log 2>&1 &
           for _ in $(seq 1 30); do
             curl -sf -o /dev/null http://localhost:3001/api/health && break
             sleep 2
           done
+          # Prove the app can actually reach the fixture before the browser
+          # tries to. A failure here is unambiguous; a failure later looks like
+          # "the strip is empty" and could be any of four things.
+          curl -sf "http://127.0.0.1:4599/?method=user.getinfo&user=x" >/dev/null \
+            || { echo "fixture unreachable from the runner"; cat /tmp/lastfm-fixture.log; exit 1; }
 
       - name: Run the connected Last.fm suite
         env:
@@ -385,6 +395,17 @@ jobs:
           E2E_BASE_URL: http://localhost:3001
           E2E_LASTFM_FIXTURE: "1"
         run: npx playwright test tests/e2e/lastfm-connected.spec.ts --reporter=github,line
+
+      # Job logs need admin rights to download, so anything worth reading after
+      # a failure has to be printed into the step's own output — where the
+      # github reporter's annotations can carry it out.
+      - name: Show the server and fixture logs
+        if: failure()
+        run: |
+          echo "===== app (pointed at the fixture) ====="
+          tail -80 /tmp/app-lastfm.log || true
+          echo "===== Last.fm fixture ====="
+          tail -40 /tmp/lastfm-fixture.log || true
 
       # Every run signs up fresh accounts; without this they accumulate in the
       # development instance forever. Runs even when the suite fails, because a
