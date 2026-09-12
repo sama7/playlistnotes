@@ -317,16 +317,15 @@ jobs:
 
       - name: Start it
         run: |
-          node artifact/scripts/start-standalone.cjs >/tmp/app-lastfm.log 2>&1 &
+          node artifact/scripts/start-standalone.cjs >/tmp/app.log 2>&1 &
           for _ in $(seq 1 30); do
             curl -sf -o /dev/null http://localhost:3001/api/health && break
             sleep 2
           done
-          # Prove the app can actually reach the fixture before the browser
-          # tries to. A failure here is unambiguous; a failure later looks like
-          # "the strip is empty" and could be any of four things.
-          curl -sf "http://127.0.0.1:4599/?method=user.getinfo&user=x" >/dev/null \
-            || { echo "fixture unreachable from the runner"; cat /tmp/lastfm-fixture.log; exit 1; }
+          # The loop above exits 0 whether or not it ever succeeded, so a server
+          # that never bound would otherwise fail much later, as a browser test.
+          curl -sf -o /dev/null http://localhost:3001/api/health \
+            || { echo "the app never became healthy"; tail -40 /tmp/app.log; exit 1; }
 
       # Three reporters, and each one earns its place.
       #
@@ -383,6 +382,8 @@ jobs:
             curl -sf -o /dev/null http://localhost:3001/api/health && break
             sleep 2
           done
+          curl -sf -o /dev/null http://localhost:3001/api/health \
+            || { echo "the app never came back up"; tail -40 /tmp/app-lastfm.log; exit 1; }
           # Prove the app can actually reach the fixture before the browser
           # tries to. A failure here is unambiguous; a failure later looks like
           # "the strip is empty" and could be any of four things.
@@ -402,6 +403,8 @@ jobs:
       - name: Show the server and fixture logs
         if: failure()
         run: |
+          echo "===== app (first start) ====="
+          tail -40 /tmp/app.log || true
           echo "===== app (pointed at the fixture) ====="
           tail -80 /tmp/app-lastfm.log || true
           echo "===== Last.fm fixture ====="
