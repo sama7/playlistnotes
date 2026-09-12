@@ -10,7 +10,7 @@ import {
 } from "@/lib/notes/browse";
 import { toNoteRow } from "@/lib/notes/list";
 import { DEFAULT_TIME_ZONE, dayBoundsInZone } from "@/lib/format-date";
-import { searchNotes } from "@/lib/notes/search";
+import { searchNoteRows } from "@/lib/notes/search";
 import { listTags } from "@/lib/notes/tags";
 import { listPlaces } from "@/lib/notes/places";
 import { lastfmAuthConfigured, lastfmConfigured } from "@/lib/music/lastfm/client";
@@ -21,6 +21,9 @@ import { NoteRow } from "./note-row";
 import { TagBar } from "./tag-bar";
 
 export const dynamic = "force-dynamic";
+
+/** A screenful and a bit, for both browsing and searching. */
+const PAGE_SIZE = 50;
 
 // Renders as "Your notes · TrackJot" through the template in app/layout.tsx.
 export const metadata = { title: "Your notes" };
@@ -44,6 +47,21 @@ export default async function NotesPage({
   const tagFilter = (params.tag ?? "").trim();
 
   const importError = params.importError;
+
+  /**
+   * How many notes this view shows.
+   *
+   * The list stopped dead at 100 and search at 50, with nothing saying so and
+   * no way past it — which for a personal archive means the older half of it
+   * quietly stops existing. A `limit` in the URL keeps the view linkable and
+   * survivable across a reload, exactly like the sort and the filters, and
+   * "Show more" is a plain link rather than an infinite scroll that cannot be
+   * bookmarked or shared. Clamped, because it comes from a query string.
+   */
+  const requestedLimit = Number(params.limit ?? "");
+  const limit = Number.isFinite(requestedLimit)
+    ? Math.min(Math.max(Math.trunc(requestedLimit), 1), 500)
+    : PAGE_SIZE;
 
   // The sort key comes off the URL, so it is checked against the allowlist
   // rather than cast — a query string must never choose an ordering expression.
@@ -70,7 +88,7 @@ export default async function NotesPage({
   const toBounds = filters.to ? dayBoundsInZone(filters.to, zone) : null;
 
   // Every path is owner-scoped in the query itself, never filtered afterwards.
-  const results = query ? await searchNotes(user.id, query) : null;
+  const results = query ? await searchNoteRows(user.id, query, limit + 1) : null;
   const [notes, tags, places] = await Promise.all([
     query
       ? Promise.resolve([])
@@ -92,6 +110,9 @@ export default async function NotesPage({
           to: toBounds?.end,
           sort,
           direction,
+          // One extra, so the page can tell "exactly a full page" from
+          // "there is more" without a second count query.
+          limit: limit + 1,
         }),
     listTags(user.id),
     listPlaces(user.id),
@@ -160,7 +181,9 @@ export default async function NotesPage({
           <h2>
             {results.length === 0
               ? `Nothing matches “${query}”`
-              : `${results.length} match${results.length === 1 ? "" : "es"} for “${query}”`}
+              : `${shown(results.length, limit)} match${
+                  results.length === 1 ? "" : "es"
+                } for “${query}”`}
           </h2>
           {results.length === 0 ? (
             <p className="note">
@@ -168,20 +191,25 @@ export default async function NotesPage({
               words, or <Link href="/notes">see everything</Link>.
             </p>
           ) : (
-            <ul className="notes">
-              {results.map((r) => (
-                <li key={r.id} className="note-card">
-                  <div className="note-head">
-                    <div className="note-head-main">
-                      <strong>{r.recordingTitle}</strong>
-                      <div className="note">{r.recordingArtist}</div>
-                    </div>
-                    <span className={`chip ${r.visibility}`}>{r.visibility}</span>
-                  </div>
-                  <p className="note-body">{r.body}</p>
-                </li>
-              ))}
-            </ul>
+            <>
+              {/* The same row the browse list renders, so a note you found is a
+                  note you can edit, tag, date, place and share — rather than a
+                  read-only card that told you it existed and stopped there. */}
+              <ul className="notes">
+                {results.slice(0, limit).map((note) => (
+                  <NoteRow
+                    key={note.id}
+                    note={toNoteRow(note)}
+                    baseUrl={baseUrl}
+                    allTags={tagNames}
+                    allPlaces={placeNames}
+                  />
+                ))}
+              </ul>
+              {results.length > limit && (
+                <ShowMore params={params} limit={limit} label="more matches" />
+              )}
+            </>
           )}
         </>
       ) : (
@@ -193,7 +221,7 @@ export default async function NotesPage({
                 : filtered
                 ? "Nothing matches those filters"
                 : "Nothing yet"
-              : `${notes.length} note${notes.length === 1 ? "" : "s"}${
+              : `${shown(notes.length, limit)} note${notes.length === 1 ? "" : "s"}${
                   tagFilter ? ` tagged “${tagFilter}”` : ""
                 }`}
           </h2>
@@ -212,20 +240,65 @@ export default async function NotesPage({
               )}
             </p>
           ) : (
-            <ul className="notes">
-              {notes.map((note) => (
-                <NoteRow
-                  key={note.id}
-                  note={toNoteRow(note)}
-                  baseUrl={baseUrl}
-                  allTags={tagNames}
-                  allPlaces={placeNames}
-                />
-              ))}
-            </ul>
+            <>
+              <ul className="notes">
+                {notes.slice(0, limit).map((note) => (
+                  <NoteRow
+                    key={note.id}
+                    note={toNoteRow(note)}
+                    baseUrl={baseUrl}
+                    allTags={tagNames}
+                    allPlaces={placeNames}
+                  />
+                ))}
+              </ul>
+              {notes.length > limit && (
+                <ShowMore params={params} limit={limit} label="more notes" />
+              )}
+            </>
           )}
         </>
       )}
     </main>
+  );
+}
+
+/**
+ * "50" when there are exactly fifty, "50+" when a fifty-first was fetched.
+ *
+ * One extra row is requested rather than a second `COUNT(*)`, which is enough
+ * to answer the only question the heading has: is there more after this?
+ */
+function shown(fetched: number, limit: number): string {
+  return fetched > limit ? `${limit}+` : String(fetched);
+}
+
+/**
+ * Another page, as a link.
+ *
+ * A link rather than a button because it keeps the view addressable: the URL
+ * still describes exactly what is on screen, so a reload, the back button and a
+ * shared link all behave. Infinite scroll would trade all three for a scrollbar
+ * that never ends.
+ */
+function ShowMore({
+  params,
+  limit,
+  label,
+}: {
+  params: Record<string, string | undefined>;
+  limit: number;
+  label: string;
+}) {
+  const next = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value && key !== "limit") next.set(key, value);
+  }
+  next.set("limit", String(limit + PAGE_SIZE));
+
+  return (
+    <p className="note show-more">
+      <Link href={`/notes?${next.toString()}`}>Show {PAGE_SIZE} {label}</Link>
+    </p>
   );
 }

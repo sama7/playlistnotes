@@ -51,8 +51,10 @@ export default function AboutPage() {
         <h2>Privacy</h2>
         <p>
           Every note starts private and stays private until you choose otherwise. Sharing
-          is one item at a time, and publishing a collection never publishes the notes
-          inside it. Unlisted links aren&rsquo;t indexed by search engines.
+          is one item at a time: publishing a collection publishes its track list, and a
+          note travels with it only if you tick that note yourself. Everything you
+          haven&rsquo;t ticked stays private. Unlisted links aren&rsquo;t indexed by
+          search engines.
         </p>
         <p>
           Cover art is shown straight from the streaming services rather than copied

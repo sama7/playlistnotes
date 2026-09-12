@@ -103,9 +103,27 @@ export default async function SharedCollectionPage({
         </p>
       )}
 
+      {/*
+        The footer has to describe the page it is actually on.
+        
+        It said flatly that "any notes they wrote about these tracks stay
+        private", which stopped being true the day per-note sharing shipped —
+        and it was saying so directly beneath notes that were on screen. A
+        privacy claim that the page itself contradicts is worse than no claim,
+        because it teaches the reader not to believe the next one.
+      */}
       <p className="note" style={{ marginTop: "2rem" }}>
-        This is a track listing someone chose to share. Any notes they wrote about these
-        tracks stay private.
+        {collection.tracks.some((track) => track.notes.length > 0) ? (
+          <>
+            This is a track listing someone chose to share. Each note shown here was
+            ticked individually by them; everything else they wrote stays private.
+          </>
+        ) : (
+          <>
+            This is a track listing someone chose to share. Any notes they wrote about
+            these tracks stay private.
+          </>
+        )}
       </p>
     </main>
   );

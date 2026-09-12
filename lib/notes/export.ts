@@ -29,9 +29,11 @@ export async function collectExport(ownerId: string) {
     include: {
       recording: {
         select: {
+          id: true,
           title: true,
           artistDisplay: true,
           releaseTitle: true,
+          origin: true,
           album: { select: { title: true } },
           externalIds: { select: { provider: true, providerId: true, providerUrl: true } },
         },
@@ -59,6 +61,31 @@ export async function collectExport(ownerId: string) {
     track: note.recording?.title ?? null,
     artist: note.recording?.artistDisplay ?? null,
     album: note.recording?.album?.title ?? note.recording?.releaseTitle ?? null,
+    /**
+     * What the export promises is a record you could rebuild from, and a bare
+     * list of URLs is not that. These three were missing:
+     *
+     *   - `recordingId` — the TrackJot UUID, which is what makes two exported
+     *     notes about the same track recognisably about the same track.
+     *   - `providerIds` — provider and identifier as a pair. A URL is a
+     *     rendering of an identifier and can change; the pair is the fact.
+     *   - the display overrides — the title and artist *this writer* chose to
+     *     see. Dropping them exports somebody else's words for their note.
+     *
+     * `recordingOrigin` comes along because it says whether the row is shared
+     * catalog or this person's own entry, which decides what a re-import may do
+     * with it.
+     */
+    recordingId: note.recording?.id ?? null,
+    recordingOrigin: note.recording?.origin ?? null,
+    displayTitle: note.displayTitle,
+    displayArtist: note.displayArtist,
+    providerIds:
+      note.recording?.externalIds.map((e) => ({
+        provider: e.provider,
+        providerId: e.providerId,
+        url: e.providerUrl,
+      })) ?? [],
     links: note.recording?.externalIds.map((e) => e.providerUrl).filter(Boolean) ?? [],
     aboutCollection: note.collection?.name ?? null,
     inCollection: note.collectionItem?.collection.name ?? null,

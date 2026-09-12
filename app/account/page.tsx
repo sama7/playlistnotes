@@ -5,6 +5,7 @@ import { lastfmAuthConfigured, lastfmConfigured } from "@/lib/music/lastfm/clien
 import { LastfmForm } from "./lastfm-form";
 import { UsernameForm } from "./username-form";
 import { TimeZoneForm } from "./time-zone-form";
+import { DangerZone } from "./danger-zone";
 
 /**
  * The account page: who you are here, and how to leave with everything.
@@ -116,6 +117,8 @@ export default async function AccountPage({
         note and collection is scoped by — so the account survives changing sign-in
         providers.
       </p>
+    
+      <DangerZone username={user.username} />
     </main>
   );
 }
